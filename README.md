@@ -41,11 +41,11 @@
   <p align="center">
     A single file ORM for SQLite in Python
     <br />
-    <a href="https://github.com/kajuberdut/dso"><strong>Explore the docs »</strong></a>
+    <!-- <a href="https://github.com/kajuberdut/dso"><strong>Explore the docs »</strong></a> -->
     <br />
     <br />
-    <a href="https://github.com/kajuberdut/dso">View Demo</a>
-    ·
+    <!-- <a href="https://github.com/kajuberdut/dso">View Demo</a> -->
+    <!-- · -->
     <a href="https://github.com/kajuberdut/dso/issues">Report Bug</a>
     ·
     <a href="https://github.com/kajuberdut/dso/issues">Request Feature</a>
@@ -265,15 +265,15 @@ Project Link: [https://github.com/kajuberdut/dso](https://github.com/kajuberdut/
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/kajuberdut/repo.svg?style=for-the-badge
-[contributors-url]: https://github.com/kajuberdut/repo/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/kajuberdut/repo.svg?style=for-the-badge
-[forks-url]: https://github.com/kajuberdut/repo/network/members
-[stars-shield]: https://img.shields.io/github/stars/kajuberdut/repo.svg?style=for-the-badge
-[stars-url]: https://github.com/kajuberdut/repo/stargazers
-[issues-shield]: https://img.shields.io/github/issues/kajuberdut/repo.svg?style=for-the-badge
-[issues-url]: https://github.com/kajuberdut/repo/issues
-[license-shield]: https://img.shields.io/github/license/kajuberdut/repo.svg?style=for-the-badge
-[license-url]: https://github.com/kajuberdut/repo/blob/master/LICENSE.txt
+[contributors-shield]: https://img.shields.io/github/contributors/kajuberdut/dso.svg?style=for-the-badge
+[contributors-url]: https://github.com/kajuberdut/dso/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/kajuberdut/dso.svg?style=for-the-badge
+[forks-url]: https://github.com/kajuberdut/dso/network/members
+[stars-shield]: https://img.shields.io/github/stars/kajuberdut/dso.svg?style=for-the-badge
+[stars-url]: https://github.com/kajuberdut/dso/stargazers
+[issues-shield]: https://img.shields.io/github/issues/kajuberdut/dso.svg?style=for-the-badge
+[issues-url]: https://github.com/kajuberdut/dso/issues
+[license-shield]: https://img.shields.io/badge/License-BSD%202--Clause-orange.svg?style=for-the-badge
+[license-url]: https://github.com/kajuberdut/dso/blob/main/LICENSE
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/kajuberdut
+[linkedin-url]: https://www.linkedin.com/in/patrick-shechet
