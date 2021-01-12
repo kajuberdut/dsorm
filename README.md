@@ -105,7 +105,7 @@ To get a local copy up and running follow these simple steps.
 
 This is an example of how to list things you need to use the software and how to install them.
   ```sh
-  pip install git+https://github.com/kajuberdut/dso/dso.git
+  pip install git+https://github.com/kajuberdut/dso.git
   ```
 
 ### Cloning / Developement setup
@@ -138,7 +138,7 @@ Database.set_default_db(":memory:")
 Database is a context manager, always used in a "with" statement.
 
 ```python
-# Assumesd above import and default lines
+# With above import and default lines
 with Database() as db:
   cursor = db.execute("SELECT 1")
   print(cursor.fetchall())
