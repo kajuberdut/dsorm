@@ -92,9 +92,19 @@ It provides a management class for the database(s) connections / cursors and tab
 
 ### Built With
 
-* 100% Pure Python
+* 100% Python with no external dependencies
 
+### Who should use this?
+#### You should **not** use dso if
+* You need a fully featured and robust ORM supporting multiple back ends
+* You don't have any idea how SQL works and need maximal hand holding
+* You want something that enforces best practices
 
+#### You might want to look at dso if
+* You know SQL enough to get around and want to avoid some boilerplate
+* You are prototyping and want something minimal to stand in for another ORM
+* You want to make your own project tailored ORM and can use dso as a starting point
+* You cannot pip install in your environment and need a single file solution that can be bundled
 
 <!-- GETTING STARTED -->
 ## Getting Started
@@ -103,7 +113,6 @@ To get a local copy up and running follow these simple steps.
 
 ### Installing with pip
 
-This is an example of how to list things you need to use the software and how to install them.
   ```sh
   pip install git+https://github.com/kajuberdut/dso.git
   ```
@@ -134,11 +143,7 @@ from dso import Database
 
 Database.set_default_db(":memory:")
 
-```
-Database is a context manager, always used in a "with" statement.
-
-```python
-# With above import and default lines
+# Database is a context manager, always used in a "with" statement.
 with Database() as db:
   cursor = db.execute("SELECT 1")
   print(cursor.fetchall())
@@ -191,10 +196,11 @@ if __name__ == "__main__":
 
     with Database() as db:
 
-        # Table objects have select, insert (can update), and delete methods that simply return sql you can execute
+        # Table objects have select, insert (can update)
+        # #, and delete methods that simply return sql you can execute
         sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
 
-        print(sql)
+        # The above outputs sql like this:
         # INSERT INTO person ( first_name
         #                    , last_name
         #                    )
@@ -205,10 +211,12 @@ if __name__ == "__main__":
         print(db.execute(*Person.select()).fetchone())
         # {'id': 1, 'first_name': 'John', 'last_name': 'Doe', 'screen_name': None}
 
-        # Even more convenient, the db object can access any table and run the whole thing for you.
+        # Even more convenient: 
+        # The db object can access any table and run the whole thing for you.
+
         # Create inserts a record
         db.create(table="person", data={"first_name": "John", "last_name": "Doe"})
-        # query selects back a list of records matching the where clause
+        # Query selects back a list of dicts matching the where clause
         johns = db.query(
             "person",
             where={"first_name": "John"},
@@ -218,16 +226,18 @@ if __name__ == "__main__":
             ],  # Note that the columns can be freehand sql
         )
         print(johns)
-        # Finally delete
+        # Finally delete the first record
         db.delete("person", where={"id": johns[0]["id"]})
 
 ```
 
-That's pretty much it, its' darned simple.
+It's darned simple.
 
 
 <!-- ROADMAP -->
 ## Roadmap
+
+The main feature needed at this point is some ability to join between objects.
 
 See the [open issues](https://github.com/kajuberdut/dso/issues) for a list of proposed features (and known issues).
 
