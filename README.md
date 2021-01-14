@@ -136,31 +136,30 @@ To get a local copy up and running follow these simple steps.
 ## Usage
 
 ### Database
-Although more advanced usage may use multiple databases, it is best to start by declaring a default.
+Although more advanced usage may use multiple databases, a single default db can be set globally.
 
 ```python
-from dso import Database
+from dso import Database, Cursor
 
-Database.set_default_db(":memory:")
+Database.default_db = ":memory:"
 
-# Database is a context manager, always used in a "with" statement.
-with Database() as db:
-  cursor = db.execute("SELECT 1")
-  print(cursor.fetchall())
-
-# [{'thingy': 1}]
+# Cursor is a context manager, always used in a "with" statement.
+# Cursor takes a db_path or uses the default_db set above.
+with Cursor() as cur:
+    print(cur.execute("SELECT 1 AS thingy"))
+    # [{'thingy': 1}]
 ```
 
 The above shows a few conveniences over using the built in SQLite3 module directly. 
-* First, the context manager makes opening/closing the cursor fairly effortless. 
-* Second, dso automatically employs a dictionary row factory instead of some arcane row type.
+* First, the context manager makes opening/closing the cursor very easy. 
+* Second, dso automatically employs a dictionary row factory vs. sqlite3's arcane row type.
 
-However, a few conveniences does not an ORM make so let's show off the actual object creation.
+Conveniences does not an ORM make. Here is a longer example showing dso objects.
 
 ```python
-from dso import Column, Database, ForeignKey, Pragma, Table, init_db
+from dso import Column, Cursor, Database, ForeignKey, Pragma, Table, init_db
 
-Database.set_default_db(":memory:")
+Database.default_db = ":memory:"
 
 # Let's setup foreign key enforcement which is off by default
 conf = Pragma(
@@ -186,7 +185,7 @@ Email = Table(
         Column("id", sqltype="INTEGER", pkey=True),
         Column("email", sqltype="TEXT", nullable=False),
         Column("person_id", nullable=False),
-        ForeignKey(column="person_id", reference_table=Person, reference_column="id"),
+        Person.fkey(on_column="person_id"),
     ],
 )
 
@@ -194,40 +193,40 @@ if __name__ == "__main__":
     # This will set our pragam and create our tables from above
     init_db()
 
-    with Database() as db:
+    # Table objects have select, insert (can update)
+    # #, and delete methods that simply return sql you can execute
+    sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
 
-        # Table objects have select, insert (can update)
-        # #, and delete methods that simply return sql you can execute
-        sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
+    # The above outputs sql like this:
+    # INSERT INTO person ( first_name
+    #                    , last_name
+    #                    )
+    # VALUES(:first_name, :last_name);
 
-        # The above outputs sql like this:
-        # INSERT INTO person ( first_name
-        #                    , last_name
-        #                    )
-        # VALUES(:first_name, :last_name);
-
-        db.execute(sql, values)
-
-        print(db.execute(*Person.select()).fetchone())
+    with Cursor() as cur:
+        cur.execute(sql, values)
+        print(cur.execute(*Person.select()))
         # {'id': 1, 'first_name': 'John', 'last_name': 'Doe', 'screen_name': None}
 
-        # Even more convenient: 
-        # The db object can access any table and run the whole thing for you.
+    # Even more convenient:
+    # The db object can access any table and run the whole thing for you.
+    db = Database()
 
-        # Create inserts a record
-        db.create(table="person", data={"first_name": "John", "last_name": "Doe"})
-        # Query selects back a list of dicts matching the where clause
-        johns = db.query(
-            "person",
-            where={"first_name": "John"},
-            columns=[
-                "id",
-                "first_name || ' ' || last_name AS full_name",
-            ],  # Note that the columns can be freehand sql
-        )
-        print(johns)
-        # Finally delete the first record
-        db.delete("person", where={"id": johns[0]["id"]})
+    # Create inserts a record
+    db.create(table="person", data={"first_name": "John", "last_name": "Doe"})
+
+    # Query selects back a list of dicts matching the where clause
+    johns = db.query(
+        "person",
+        where={"first_name": "John"},
+        columns=[
+            "id",
+            "first_name || ' ' || last_name AS full_name",
+        ],  # Note that the columns can be freehand sql
+    )
+    print(johns)
+    # Finally delete the first record
+    db.delete("person", where={"id": johns[0]["id"]})
 
 ```
 
@@ -237,7 +236,11 @@ It's darned simple.
 <!-- ROADMAP -->
 ## Roadmap
 
-The main feature needed at this point is some ability to join between objects.
+Needed features:
+* JOIN between objects
+* More WHERE operators (not, or, clause grouping)
+* Grouping/Aggregates
+* Order/Limit/Offset
 
 See the [open issues](https://github.com/kajuberdut/dso/issues) for a list of proposed features (and known issues).
 
@@ -250,9 +253,10 @@ Contributions are what make the open source community such an amazing place to b
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+3. Add tests, we aim for 100% test coverage
+4. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+5. Push to the Branch (`git push origin feature/AmazingFeature`)
+6. Open a Pull Request
 
 
 

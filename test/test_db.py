@@ -1,41 +1,132 @@
-from dso import Database
+import uuid
 
 import pytest
+from dso import *
+
+
+@pytest.fixture(scope="session")
+def db_path():
+    return ":memory:"
 
 
 @pytest.fixture(scope="function")
-def memory_db():
-    with Database(":memory:") as db:
-        yield db
+def cur(db_path):
+    with Cursor(db_path) as cur:
+        yield cur
 
 
-def test_db_create(memory_db):
-    memory_db.execute("CREATE TABLE test(n INTEGER)")
-    memory_db.commit()
+@pytest.fixture(scope="session")
+def db(db_path):
+    return Database(db_path)
 
 
-def test_db_rollback(memory_db):
-    memory_db.execute("INSERT INTO test(n) VALUES(:int_value)", {"int_value": 1})
-    memory_db.rollback()
+@pytest.fixture(scope="session")
+def table_setup(db_path):
+    with Cursor(db_path=db_path) as cur:
+        test_table = Table(
+            name="test",
+            column=[
+                Column("test_id", sqltype="INTEGER", pkey=True),
+                Column("stuff", unique=True, nullable=False),
+            ],
+        )
+        cur.execute(test_table.sql())
+    return test_table
 
 
-def test_db_close(memory_db):
-    memory_db.close()
+def test_name(table_setup):
+    assert name(table_setup) == "test"
 
 
-def test_db_no_default():
-    restore = Database.default_db
-    Database.clear_default_db()
+def test_column_repr():
+    n = "Totally just a test"
+    c = Column(name=n)
+    assert repr(c) == n
+
+
+def test_foreign_key():
+    f = ForeignKey("test_column", "test", "id")
+    assert f.name == "Fkey on test_column"
+    assert f.sql() == "FOREIGN KEY (test_column) REFERENCES test(id)"
+    assert repr(f) == "FKEY test(id)"
+
+
+def test_table_pkey(table_setup):
+    assert repr(table_setup.pkey()[0]) == "test.test_id"
+
+
+def test_schema(table_setup):
+    table_setup.schema = "main"
+    assert table_setup.identifier == "main.test"
+    assert repr(table_setup) == "main.test(test_id, stuff)"
+    table_setup.schema = None
+
+
+def test_table_fkey(table_setup):
+    t = Table(
+        name="dependant",
+        column=[Column(name="SomeColumn"), Column(name="test_id")],
+        constraints=[table_setup.fkey()],
+    )
+
+
+def test_init_db(db_path):
+    init_db(db_path=db_path)
+
+
+def test_where_none():
+    assert where_sql(None) is None
+
+
+@pytest.fixture(scope="function")
+def stuff():
+    return str(uuid.uuid4())
+
+
+def test_joinmap_single(table_setup):
+    assert joinmap(table_setup) == table_setup.name
+
+
+def test_db_insert_retreive_delete(table_setup, db, stuff):
+    d = {"stuff": stuff}
+    db.create("test", data=d)
+    result = db.query("test", where=d)
+    assert result[0]["stuff"] == stuff
+    db.delete("test", where=d)
+    result = db.query(table_setup, where=d)
+    assert len(result) == 0
+
+
+def test_pragma():
+    pragma = {
+        "foreign_keys": 1,
+        "temp_store": 2,
+    }
+    p = Pragma(pragma=pragma)
+    assert len(p.sql()) > len("".join(pragma.keys()))
+
+
+def test_statement():
+    t = SelectType
+    s = Statement(
+        statement_type=t,
+        components={t.SELECT: "SELECT 1 as thing", t.WHERE: "WHERE 1=1"},
+    )
+    assert s.sql is not None
+
+
+def test_no_default():
     with pytest.raises(ValueError):
-        with Database() as d:
-            d.execute("SELECT 1")
-    Database.set_default_db(restore)
+        Database()
 
 
-def test_db_default():
-    restore = Database.default_db
-    Database.set_default_db(":memory:")
-    with Database() as d:
-        read_def = d.default_db
-        assert read_def == ":memory:"
-    Database.set_default_db(restore)
+def test_default(table_setup):
+    Database.default_db = ":memory:"
+    db = Database()
+    db.query(table="test", columns=["1 as thing"])
+    Database.default_db = None
+
+
+def test_db_close():
+    db = Database(":memory:")
+    db.close()
