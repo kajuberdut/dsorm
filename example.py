@@ -1,4 +1,4 @@
-from dso import Column, Cursor, Database, ForeignKey, Pragma, Table, init_db
+from dsorm import Column, Cursor, Database, ForeignKey, Pragma, Table, init_db
 
 Database.default_db = ":memory:"
 

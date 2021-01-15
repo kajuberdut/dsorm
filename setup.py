@@ -7,8 +7,8 @@ def read(fname):
 
 
 setup(
-    name="dso",
-    version="0.0.2",
+    name="dsorm",
+    version="0.0.3",
     author="Patrick Shechet",
     author_email="patrick.shechet@gmail.com",
     description=("A Darned Simple ORM"),

@@ -10,7 +10,7 @@ pytest = "*"
 coverage = "*"
 
 [packages]
-dso = {editable = true, path = "."}
+dsorm = {editable = true, path = "."}
 
 [requires]
 python_version = "3.8"

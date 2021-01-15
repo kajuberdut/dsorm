@@ -55,13 +55,13 @@ class UpdateType(Enum):
 
 # SECTION 2: Custom Types, abc classes and base classes
 @dataclasses.dataclass
-class DSOObject(abc.ABC):
+class DSObject(abc.ABC):
     @abc.abstractmethod
     def sql(self) -> str:
         ...  # pragma: no cover
 
 
-class RegisteredObject(DSOObject):
+class RegisteredObject(DSObject):
     """ Registered Objects are automatically registered in the information schema of their database."""
 
     db: "Database" = None
@@ -72,7 +72,7 @@ class RegisteredObject(DSOObject):
         self.db.information_schema[type(self).__name__][self.name] = self
 
 
-SQLFragment = t.Union[DSOObject, str]
+SQLFragment = t.Union[DSObject, str]
 
 
 # SECTION 3: Utility functions
@@ -80,7 +80,7 @@ nlta = "\n\tAND "  #  New Line, Tab, "AND"
 
 
 def name(o: SQLFragment, qualify=False) -> str:
-    if isinstance(o, DSOObject):
+    if isinstance(o, DSObject):
         if qualify:
             return o.identifier
         else:
@@ -93,7 +93,7 @@ qname = functools.partial(name, qualify=True)
 
 
 def sql(o: SQLFragment) -> str:
-    if isinstance(o, DSOObject):
+    if isinstance(o, DSObject):
         return o.sql()
     else:
         return o
@@ -229,7 +229,7 @@ class Table(RegisteredObject):
     def sql(self):
         return f"CREATE TABLE IF NOT EXISTS {self.name} (\n {joinmap([*self.column, *self.constraints], sql)})"
 
-    def pkey(self) -> t.List[DSOObject]:
+    def pkey(self) -> t.List[DSObject]:
         return [c for c in self.column if c.pkey]
 
     def fkey(self, on_column: SQLFragment = None) -> ForeignKey:
@@ -276,15 +276,20 @@ class Database:
     connection_pool: t.Dict[str, sqlite3.Connection] = dict()
     default_db: str = None
     information_schema: t.Dict = defaultdict(dict)
+    pre_connect_hook: t.Callable = None
+    post_connect_hook: t.Callable = None
 
     @classmethod
-    def table(self, o: SQLFragment) -> "DSOObject":
+    def table(self, o: SQLFragment) -> "DSObject":
         if isinstance(o, Table):
             return o
         else:
             return self.information_schema["Table"][o]
 
     def __init__(self, db_path: str = None):
+        if self.pre_connect_hook:
+            self.pre_connect_hook(self)
+            self.pre_connect_hook = None
         if db_path:
             self.db_path = db_path
         elif self.default_db is None:
@@ -295,6 +300,9 @@ class Database:
         if self.c is None:
             self.c = sqlite3.connect(self.db_path)
             self.c.row_factory = self.dict_factory
+        if self.post_connect_hook:
+            self.post_connect_hook()
+            self.post_connect_hook = None
 
     def dict_factory(
         self, cursor: sqlite3.Cursor, row: sqlite3.Row
@@ -321,8 +329,8 @@ class Database:
             result = cur.execute(sql, values)
         return result
 
-    def create(self, table: t.Union["Table", str], data: t.Dict) -> None:
-        sql, data = self.table(table).insert(data=data)
+    def create(self, table: t.Union["Table", str], data: t.Dict, replace=False) -> None:
+        sql, data = self.table(table).insert(data=data, replace=replace)
         with Cursor(_db=self) as cur:
             cur.execute(sql, data)
 
@@ -333,7 +341,7 @@ class Database:
 
 
 class Cursor:
-    """ A convenience class that wraps SQLite3.Cursor connected to a dso.Database instance. """
+    """ A convenience class that wraps SQLite3.Cursor connected to a dsorm.Database instance. """
 
     def __init__(self, db_path=None, _db: Database = None, auto_commit=True):
         if _db:

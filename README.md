@@ -7,7 +7,7 @@
 ***
 ***
 *** To avoid retyping too much info. Do a search and replace for the following:
-*** kajuberdut, dso, twitter_handle, patrick.shechet@gmail.com, Darned Simple ORM, A single file ORM for SQLite in Python
+*** kajuberdut, dsORM, twitter_handle, patrick.shechet@gmail.com, Darned Simple ORM, A single file ORM for SQLite in Python
 -->
 
 
@@ -32,7 +32,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <p align="center">
-  <a href="https://github.com/kajuberdut/dso">
+  <a href="https://github.com/kajuberdut/dsorm">
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
 
@@ -41,14 +41,14 @@
   <p align="center">
     A single file ORM for SQLite in Python
     <br />
-    <!-- <a href="https://github.com/kajuberdut/dso"><strong>Explore the docs »</strong></a> -->
+    <!-- <a href="https://github.com/kajuberdut/dsorm"><strong>Explore the docs »</strong></a> -->
     <br />
     <br />
-    <!-- <a href="https://github.com/kajuberdut/dso">View Demo</a> -->
+    <!-- <a href="https://github.com/kajuberdut/dsorm">View Demo</a> -->
     <!-- · -->
-    <a href="https://github.com/kajuberdut/dso/issues">Report Bug</a>
+    <a href="https://github.com/kajuberdut/dsorm/issues">Report Bug</a>
     ·
-    <a href="https://github.com/kajuberdut/dso/issues">Request Feature</a>
+    <a href="https://github.com/kajuberdut/dsorm/issues">Request Feature</a>
   </p>
 </p>
 
@@ -85,7 +85,7 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-Darned Simple ORM (dso) is designed to be a minimal (single file,) approach to mapping SQL tables to Python Objects.
+Darned Simple ORM (dsORM) is designed to be a minimal (single file,) approach to mapping SQL tables to Python Objects.
 
 It provides a management class for the database(s) connections / cursors and tables (for creation, select, insert/update or delete.)
 
@@ -95,15 +95,15 @@ It provides a management class for the database(s) connections / cursors and tab
 * 100% Python with no external dependencies
 
 ### Who should use this?
-#### You should **not** use dso if
+#### You should **not** use dsORM if
 * You need a fully featured and robust ORM supporting multiple back ends
 * You don't have any idea how SQL works and need maximal hand holding
 * You want something that enforces best practices
 
-#### You might want to look at dso if
+#### You might want to look at dsORM if
 * You know SQL enough to get around and want to avoid some boilerplate
 * You are prototyping and want something minimal to stand in for another ORM
-* You want to make your own project tailored ORM and can use dso as a starting point
+* You want to make your own project tailored ORM and can use dsORM as a starting point
 * You cannot pip install in your environment and need a single file solution that can be bundled
 
 <!-- GETTING STARTED -->
@@ -114,14 +114,14 @@ To get a local copy up and running follow these simple steps.
 ### Installing with pip
 
   ```sh
-  pip install git+https://github.com/kajuberdut/dso.git
+  pip install git+https://github.com/kajuberdut/dsorm.git
   ```
 
 ### Cloning / Developement setup
 
 1. Clone the repo
    ```sh
-   git clone https://github.com/kajuberdut/dso.git
+   git clone https://github.com/kajuberdut/dsorm.git
    ```
 2. Pipenv install dev requirements
    ```sh
@@ -139,7 +139,7 @@ To get a local copy up and running follow these simple steps.
 Although more advanced usage may use multiple databases, a single default db can be set globally.
 
 ```python
-from dso import Database, Cursor
+from dsorm import Database, Cursor
 
 Database.default_db = ":memory:"
 
@@ -152,12 +152,12 @@ with Cursor() as cur:
 
 The above shows a few conveniences over using the built in SQLite3 module directly. 
 * First, the context manager makes opening/closing the cursor very easy. 
-* Second, dso automatically employs a dictionary row factory vs. sqlite3's arcane row type.
+* Second, dsORM automatically employs a dictionary row factory vs. sqlite3's arcane row type.
 
-Conveniences does not an ORM make. Here is a longer example showing dso objects.
+Conveniences does not an ORM make. Here is a longer example showing dsORM objects.
 
 ```python
-from dso import Column, Cursor, Database, ForeignKey, Pragma, Table, init_db
+from dsorm import Column, Cursor, Database, ForeignKey, Pragma, Table, init_db
 
 Database.default_db = ":memory:"
 
@@ -242,7 +242,7 @@ Needed features:
 * Grouping/Aggregates
 * Order/Limit/Offset
 
-See the [open issues](https://github.com/kajuberdut/dso/issues) for a list of proposed features (and known issues).
+See the [open issues](https://github.com/kajuberdut/dsorm/issues) for a list of proposed features (and known issues).
 
 
 
@@ -272,22 +272,22 @@ Distributed under the BSD Two-clause License. See `LICENSE` for more information
 
 Patrick Shechet - patrick.shechet@gmail.com
 
-Project Link: [https://github.com/kajuberdut/dso](https://github.com/kajuberdut/dso)
+Project Link: [https://github.com/kajuberdut/dsorm](https://github.com/kajuberdut/dsorm)
 
 
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/kajuberdut/dso.svg?style=for-the-badge
-[contributors-url]: https://github.com/kajuberdut/dso/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/kajuberdut/dso.svg?style=for-the-badge
-[forks-url]: https://github.com/kajuberdut/dso/network/members
-[stars-shield]: https://img.shields.io/github/stars/kajuberdut/dso.svg?style=for-the-badge
-[stars-url]: https://github.com/kajuberdut/dso/stargazers
-[issues-shield]: https://img.shields.io/github/issues/kajuberdut/dso.svg?style=for-the-badge
-[issues-url]: https://github.com/kajuberdut/dso/issues
+[contributors-shield]: https://img.shields.io/github/contributors/kajuberdut/dsorm.svg?style=for-the-badge
+[contributors-url]: https://github.com/kajuberdut/dsorm/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/kajuberdut/dsorm.svg?style=for-the-badge
+[forks-url]: https://github.com/kajuberdut/dsorm/network/members
+[stars-shield]: https://img.shields.io/github/stars/kajuberdut/dsorm.svg?style=for-the-badge
+[stars-url]: https://github.com/kajuberdut/dsorm/stargazers
+[issues-shield]: https://img.shields.io/github/issues/kajuberdut/dsorm.svg?style=for-the-badge
+[issues-url]: https://github.com/kajuberdut/dsorm/issues
 [license-shield]: https://img.shields.io/badge/License-BSD%202--Clause-orange.svg?style=for-the-badge
-[license-url]: https://github.com/kajuberdut/dso/blob/main/LICENSE
+[license-url]: https://github.com/kajuberdut/dsorm/blob/main/LICENSE
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/patrick-shechet

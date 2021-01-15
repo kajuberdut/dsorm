@@ -1,7 +1,7 @@
 import uuid
 
 import pytest
-from dso import *
+from dsorm import *
 
 
 @pytest.fixture(scope="session")
