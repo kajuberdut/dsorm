@@ -90,17 +90,20 @@ Darned Simple ORM (dsORM) is designed to be a minimal (single file,) approach to
 It provides a management class for the database(s) connections / cursors and tables (for creation, select, insert/update or delete.)
 
 
-### Built With
+### Designed for easy integration / modification
 
-* 100% Python with no external dependencies
+* 100% Python 
+* No external dependencies
+* 100% test coverage
+* Functional code in a single file
 
-### Who should use this?
-#### You should **not** use dsORM if
+### Should I use this?
+#### You should **not** use dsORM if:
 * You need a fully featured and robust ORM supporting multiple back ends
 * You don't have any idea how SQL works and need maximal hand holding
 * You want something that enforces best practices
 
-#### You might want to look at dsORM if
+#### You should use dsORM if:
 * You know SQL enough to get around and want to avoid some boilerplate
 * You are prototyping and want something minimal to stand in for another ORM
 * You want to make your own project tailored ORM and can use dsORM as a starting point
@@ -117,19 +120,7 @@ To get a local copy up and running follow these simple steps.
   pip install git+https://github.com/kajuberdut/dsorm.git
   ```
 
-### Cloning / Developement setup
-
-1. Clone the repo
-   ```sh
-   git clone https://github.com/kajuberdut/dsorm.git
-   ```
-2. Pipenv install dev requirements
-   ```sh
-   pipenv install --dev
-   pipenv install -e .
-   ```
-   For more about pipenv see: [Pipenv Github](https://github.com/pypa/pipenv)
-
+For information about cloning and dev setup see: [Contributing](#Contributing)
 
 
 <!-- USAGE EXAMPLES -->
@@ -143,21 +134,24 @@ from dsorm import Database, Cursor
 
 Database.default_db = ":memory:"
 
-# Cursor is a context manager, always used in a "with" statement.
+# Cursor is a context manager used in a "with" statement.
 # Cursor takes a db_path or uses the default_db set above.
 with Cursor() as cur:
     print(cur.execute("SELECT 1 AS thingy"))
-    # [{'thingy': 1}]
+```
+Result: 
+```json
+[{'thingy': 1}]
 ```
 
 The above shows a few conveniences over using the built in SQLite3 module directly. 
-* First, the context manager makes opening/closing the cursor very easy. 
-* Second, dsORM automatically employs a dictionary row factory vs. sqlite3's arcane row type.
+* The Cursor class makes opening/closing the cursor effortless. 
+* dsORM automatically employs a dictionary row factory. No more arcane Row objects.
 
-Conveniences does not an ORM make. Here is a longer example showing dsORM objects.
+Here is a longer example showing dsORM objects.
 
 ```python
-from dsorm import *  # clean for readme, you'll want to import objects by name.
+from dsorm import *  # Don't do this in real code: https://www.python.org/dev/peps/pep-0008/#imports
 
 # The pre_connect wrapper let's you set a function that will be called before the first connection
 @pre_connect()
@@ -191,48 +185,41 @@ Person = Table(
     ],
 )
 
-Email = Table(
-    name="email",
-    column=[
-        Column("id", sqltype="INTEGER", pkey=True),
-        Column("email", sqltype="TEXT", nullable=False),
-        Column("person_id", nullable=False),
-        Person.fkey(on_column="person_id"),
-    ],
+# Table objects have select, insert, and delete methods
+# Each returns sql and values you can use with execute
+sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
+with Cursor() as cur:
+    cur.execute(sql, values)
+    # Or with unpacking (*)
+    print(cur.execute(*Person.select()))
+
+# Even more convenient:
+# Database instances can access any table with Create, Query, or Delete.
+db = Database()
+
+# Inserts a record
+db.create(table="person", data={"first_name": "John", "last_name": "Doe"})
+
+# Select a list of rows matching the where
+johns = db.query(
+    "person",
+    where={"first_name": "John"},
+    columns=[
+        "id",
+        "first_name || ' ' || last_name AS full_name", # Note that the columns can be sql
+    ],  
 )
+print(johns)
 
-if __name__ == "__main__":
-    # Table objects have select, insert, and delete methods
-    # Each returns sql and values you can pass to execute
-    sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
-    with Cursor() as cur:
-        cur.execute(sql, values)
-        print(cur.execute(*Person.select()))
-        # {'id': 1, 'first_name': 'John', 'last_name': 'Doe', 'screen_name': None}
+db.delete("person", where={"id": johns[0]["id"]})
+print([r["id"] for r in db.query("person")])
 
-    # Even more convenient:
-    # The db object can access any table and run the whole thing for you.
-    db = Database()
-
-    # Create inserts a record
-    db.create(table="person", data={"first_name": "John", "last_name": "Doe"})
-
-    # Query selects back a list of dicts matching the where clause
-    johns = db.query(
-        "person",
-        where={"first_name": "John"},
-        columns=[
-            "id",
-            "first_name || ' ' || last_name AS full_name",
-        ],  # Note that the columns can be freehand sql
-    )
-    print(johns)
-    # [{'id': 1, 'full_name': 'John Doe'}, {'id': 2, 'full_name': 'John Doe'}]
-
-    db.delete("person", where={"id": johns[0]["id"]})
-    print(db.query("person"))
-    # [{'id': 2, 'first_name': 'John', 'last_name': 'Doe', 'screen_name': None}]
-
+```
+Result:
+```
+{'id': 1, 'first_name': 'John', 'last_name': 'Doe', 'screen_name': None}
+[{'id': 1, 'full_name': 'John Doe'}, {'id': 2, 'full_name': 'John Doe'}]
+[2]
 ```
 
 It's darned simple.
@@ -258,10 +245,27 @@ Contributions are what make the open source community such an amazing place to b
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Add tests, we aim for 100% test coverage
+3. Add tests, we aim for 100% test coverage [Using Coverage](https://coverage.readthedocs.io/en/coverage-5.3.1/#using-coverage-py)
 4. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
 5. Push to the Branch (`git push origin feature/AmazingFeature`)
 6. Open a Pull Request
+
+### Cloning / Developement setup
+1. Clone the repo
+    ```sh
+    git clone https://github.com/kajuberdut/dsorm.git
+    ```
+2. Pipenv install dev requirements
+    ```sh
+    pipenv install --dev
+    pipenv install -e .
+    ```
+3. Run tests
+    ```sh
+    pipenv shell
+    py.test
+    ```
+  For more about pipenv see: [Pipenv Github](https://github.com/pypa/pipenv)
 
 
 
