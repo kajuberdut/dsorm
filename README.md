@@ -141,10 +141,10 @@ with Cursor() as cur:
 ```
 Result: 
 ```json
-[{'thingy': 1}]
+[{"thingy": 1}]
 ```
 
-The above shows a few conveniences over using the built in SQLite3 module directly. 
+This snippet demonstrates some advantages over using Python's build in SQLite3 directly. 
 * The Cursor class makes opening/closing the cursor effortless. 
 * dsORM automatically employs a dictionary row factory. No more arcane Row objects.
 
@@ -162,12 +162,13 @@ def db_setup(db):
 # The post_connect wrapper is called once after the first connection is made
 @post_connect()
 def build(db):
-    # This will set our pragam and create our tables.
-    # We'll create these bellow and they will be instantiated at the first connection
+    # This will set pragma and create all tables.
+    # The objects are defined further down
+    # Using this hook pushes instantiation to first connection
     db.init_db()
 
 
-# Let's setup foreign key enforcement which is off by default
+# Foreign key enforcement is off by default in SQLite
 conf = Pragma(
     pragma={
         "foreign_keys": 1,
@@ -216,9 +217,9 @@ print([r["id"] for r in db.query("person")])
 
 ```
 Result:
-```
-{'id': 1, 'first_name': 'John', 'last_name': 'Doe', 'screen_name': None}
-[{'id': 1, 'full_name': 'John Doe'}, {'id': 2, 'full_name': 'John Doe'}]
+```json
+{"id": 1, "first_name": "John", "last_name": "Doe", "screen_name": None}
+[{"id": 1, "full_name": "John Doe"}, {"id": 2, "full_name": "John Doe"}]
 [2]
 ```
 
@@ -250,7 +251,7 @@ Contributions are what make the open source community such an amazing place to b
 5. Push to the Branch (`git push origin feature/AmazingFeature`)
 6. Open a Pull Request
 
-### Cloning / Developement setup
+### Cloning / Development setup
 1. Clone the repo
     ```sh
     git clone https://github.com/kajuberdut/dsorm.git
