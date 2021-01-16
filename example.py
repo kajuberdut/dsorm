@@ -1,6 +1,18 @@
-from dsorm import Column, Cursor, Database, ForeignKey, Pragma, Table, init_db
+from dsorm import *  # clean for readme, you'll want to import objects by name.
 
-Database.default_db = ":memory:"
+# The pre_connect wrapper let's you set a function that will be called before the first connection
+@pre_connect()
+def db_setup(db):
+    db.default_db = ":memory:"
+
+
+# The post_connect wrapper is called once after the first connection is made
+@post_connect()
+def build(db):
+    # This will set our pragam and create our tables.
+    # We'll create these bellow and they will be instantiated at the first connection
+    db.init_db()
+
 
 # Let's setup foreign key enforcement which is off by default
 conf = Pragma(
@@ -31,19 +43,9 @@ Email = Table(
 )
 
 if __name__ == "__main__":
-    # This will set our pragam and create our tables from above
-    init_db()
-
-    # Table objects have select, insert (can update)
-    # #, and delete methods that simply return sql you can execute
+    # Table objects have select, insert, and delete methods
+    # Each returns sql and values you can pass to execute
     sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
-
-    # The above outputs sql like this:
-    # INSERT INTO person ( first_name
-    #                    , last_name
-    #                    )
-    # VALUES(:first_name, :last_name);
-
     with Cursor() as cur:
         cur.execute(sql, values)
         print(cur.execute(*Person.select()))
@@ -54,7 +56,7 @@ if __name__ == "__main__":
     db = Database()
 
     # Create inserts a record
-    db.create(table="person", data={"first_name": "Jane", "last_name": "Doe"})
+    db.create(table="person", data={"first_name": "John", "last_name": "Doe"})
 
     # Query selects back a list of dicts matching the where clause
     johns = db.query(
@@ -66,5 +68,8 @@ if __name__ == "__main__":
         ],  # Note that the columns can be freehand sql
     )
     print(johns)
-    # Finally delete the first record
+    # [{'id': 1, 'full_name': 'John Doe'}, {'id': 2, 'full_name': 'John Doe'}]
+
     db.delete("person", where={"id": johns[0]["id"]})
+    print(db.query("person"))
+    # [{'id': 2, 'first_name': 'John', 'last_name': 'Doe', 'screen_name': None}]

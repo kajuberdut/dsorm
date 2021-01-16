@@ -1,20 +1,24 @@
 import os
-from setuptools import setup, find_packages
+import pathlib
 
+from setuptools import find_packages, setup
 
-def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+# The directory containing this file
+HERE = pathlib.Path(__file__).parent
 
+# The text of the README file
+README = (HERE / "README.md").read_text()
 
 setup(
     name="dsorm",
-    version="0.0.3",
+    version="0.0.4",
     author="Patrick Shechet",
     author_email="patrick.shechet@gmail.com",
     description=("A Darned Simple ORM"),
     license="BSD",
     packages=find_packages(),
-    long_description=read("README.md"),
+    long_description=README,
+    long_description_content_type="text/markdown",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "License :: OSI Approved :: BSD License",

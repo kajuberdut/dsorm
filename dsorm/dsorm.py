@@ -111,22 +111,40 @@ def joinmap(
 
 def where_sql(where: t.Dict):
     if not where:
-        return
+        return ""
     return (
         f"""WHERE {joinmap(where.keys(), f=lambda x: f"{x} = :{x}", seperator=nlta)}"""
     )
 
 
-def init_db(db_path: str = None):
-    """ Create basic db objects. """
-    sql_set = list()
-    [
-        [sql_set.append(o) for o in Database.information_schema[t].values()]
-        for t in ["Pragma", "Table"]
-    ]
-    with Cursor(db_path=db_path) as cur:
-        seperator = ";\n\n"
-        cur._cursor.executescript(joinmap(sql_set, sql, seperator=seperator))
+def do_nothing(*args, **kwargs):
+    pass
+
+
+def pre_connect(run_once=True):
+    def pre_wrapper(func):
+        @functools.wraps(func)
+        def pre(*args):
+            func(args[0])
+            if run_once:
+                Database.pre_connect_hook = do_nothing
+
+        Database.pre_connect_hook = pre
+
+    return pre_wrapper
+
+
+def post_connect(run_once=True):
+    def post_wrapper(func):
+        @functools.wraps(func)
+        def post(*args):
+            func(args[0])
+            if run_once:
+                Database.post_connect_hook = do_nothing
+
+        Database.post_connect_hook = post
+
+    return post_wrapper
 
 
 # SECTION 4: SQL Component Classes
@@ -188,8 +206,8 @@ class Column(RegisteredObject):
 
     @property
     def identifier(self):
-        if self.table:
-            return self.table.identifier + "." + self.name
+        if self.table and self.table.name:
+            return self.table.name + "." + self.name
         else:
             return self.name
 
@@ -219,7 +237,7 @@ class Table(RegisteredObject):
     column: t.List
     name: str = None
     constraints: t.List = dataclasses.field(default_factory=list)
-    schema: str = None
+    schema: str = "Main"
 
     def __post_init__(self):
         for c in self.column:
@@ -274,10 +292,10 @@ class Table(RegisteredObject):
 class Database:
 
     connection_pool: t.Dict[str, sqlite3.Connection] = dict()
-    default_db: str = None
+    _default_db: str = None
     information_schema: t.Dict = defaultdict(dict)
-    pre_connect_hook: t.Callable = None
-    post_connect_hook: t.Callable = None
+    pre_connect_hook: t.Callable = do_nothing
+    post_connect_hook: t.Callable = do_nothing
 
     @classmethod
     def table(self, o: SQLFragment) -> "DSObject":
@@ -286,36 +304,42 @@ class Database:
         else:
             return self.information_schema["Table"][o]
 
-    def __init__(self, db_path: str = None):
-        if self.pre_connect_hook:
-            self.pre_connect_hook(self)
-            self.pre_connect_hook = None
-        if db_path:
-            self.db_path = db_path
-        elif self.default_db is None:
-            raise ValueError("No default set, a db_path must be provided.")
-        else:
-            self.db_path = self.default_db
+    @property
+    def default_db(self):
+        return self.__class__._default_db
 
-        if self.c is None:
-            self.c = sqlite3.connect(self.db_path)
-            self.c.row_factory = self.dict_factory
-        if self.post_connect_hook:
-            self.post_connect_hook()
-            self.post_connect_hook = None
+    @default_db.setter
+    def default_db(self, new):
+        self.__class__._default_db = new
+
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path
+        if self.db_path is not None:
+            self._c = self.connection_pool.get(self.db_path)
+        else:
+            self._c = None
 
     def dict_factory(
         self, cursor: sqlite3.Cursor, row: sqlite3.Row
     ) -> t.Dict[t.Any, t.Any]:  # pragma: no cover
         return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
-    @property
-    def c(self) -> t.Optional[sqlite3.Connection]:
-        return self.connection_pool.get(self.db_path)
+    def connect(self):
+        self.pre_connect_hook()
+        if self.db_path is None and self.default_db is not None:
+            self.db_path = self.default_db
+        self._c = self.connection_pool.get(self.db_path)
+        if self._c is None:
+            self.connection_pool[self.db_path] = sqlite3.connect(self.db_path)
+            self._c = self.connection_pool[self.db_path]
+            self._c.row_factory = self.dict_factory
+        self.post_connect_hook()
 
-    @c.setter
-    def c(self, connection: sqlite3.Connection) -> None:
-        self.connection_pool[self.db_path] = connection
+    @property
+    def c(self) -> sqlite3.Connection:
+        if self._c is None:
+            self.connect()
+        return self._c
 
     def close(self):
         self.c.close()
@@ -338,6 +362,18 @@ class Database:
         sql, values = self.table(table).delete(where=where)
         with Cursor(_db=self) as cur:
             cur.execute(sql, values)
+
+    def init_db(self):
+        """ Create basic db objects. """
+        sql_set = list()
+        [
+            [sql_set.append(o) for o in self.information_schema[t].values()]
+            for t in ["Pragma", "Table"]
+        ]
+        seperator = ";\n\n"
+        script = joinmap(sql_set, sql, seperator=seperator)
+        with Cursor(_db=self) as cur:
+            cur._cursor.executescript(script)
 
 
 class Cursor:

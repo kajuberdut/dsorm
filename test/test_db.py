@@ -71,11 +71,11 @@ def test_table_fkey(table_setup):
 
 
 def test_init_db(db_path):
-    init_db(db_path=db_path)
+    Database(db_path=db_path).init_db()
 
 
 def test_where_none():
-    assert where_sql(None) is None
+    assert where_sql(None) == ""
 
 
 @pytest.fixture(scope="function")
@@ -116,8 +116,8 @@ def test_statement():
 
 
 def test_no_default():
-    with pytest.raises(ValueError):
-        Database()
+    with pytest.raises(TypeError):
+        Database().connect()
 
 
 def test_default(table_setup):
