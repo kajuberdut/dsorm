@@ -171,18 +171,32 @@ class Where(DSObject):
     def sql(self):
         if not self.where:
             return ""
+        clause_list = list()
+        for k, v in self.where.items():
+            if isinstance(v, str):
+                clause_list.append(self.Comparison(column=k, target=v))
+
         return (
-            f"""WHERE {joinmap(self.where.items(), f=lambda x: f"{x[0]} = {ds_quote(x[1])}", seperator=LINE_AND_SEPERATOR)}"""
+            f"""WHERE {joinmap(clause_list, ds_sql, seperator=LINE_AND_SEPERATOR)}"""
         )
+
+    @dataclasses.dataclass
+    class Comparison(DSObject):
+        column: SQLFragment
+        target: Fragments
+        comparator: str = "="
+
+        def sql(self):
+            return f"{self.column} {self.comparator} {ds_quote(self.target)}"
 
     @dataclasses.dataclass
     class In(DSObject):
         column: SQLFragment
-        targets: Fragments
+        target: Fragments
         invert: bool = False
 
         def sql(self):
-            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.targets, ds_quote)})"""
+            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.target, ds_quote)})"""
 
 
 @dataclasses.dataclass
