@@ -72,7 +72,7 @@ class RegisteredObject(DSObject):
         self.db.information_schema[type(self).__name__][self.name] = self
 
 
-SQLFragment = t.Union[DSObject, str]
+SQLFragment = t.Union[DSObject, str, int, float]
 Fragments = t.Union[Iterable, SQLFragment]
 
 # SECTION 3: Utility functions
@@ -80,7 +80,7 @@ LINE_AND_SEPERATOR = "\n\tAND "
 COMMAND_SEPERATOR = ";\n\n"
 
 
-def _name(o: SQLFragment, qualify=False) -> str:
+def ds_name(o: SQLFragment, qualify=False) -> str:
     if isinstance(o, DSObject):
         if qualify:
             return o.identifier
@@ -90,10 +90,10 @@ def _name(o: SQLFragment, qualify=False) -> str:
         return o
 
 
-_qname = functools.partial(_name, qualify=True)
+ds_qname = functools.partial(ds_name, qualify=True)
 
 
-def _sql(o: SQLFragment) -> str:
+def ds_sql(o: SQLFragment) -> str:
     if isinstance(o, DSObject):
         return o.sql()
     else:
@@ -101,7 +101,7 @@ def _sql(o: SQLFragment) -> str:
 
 
 def joinmap(
-    o: Fragments, f: t.Callable = _name, seperator: str = ", "
+    o: Fragments, f: t.Callable = ds_name, seperator: str = ", "
 ) -> str:
     """ Returns a comma seperated list of f(i) for i in o. """
     if isinstance(o, Iterable) and not isinstance(o, str):
@@ -109,12 +109,15 @@ def joinmap(
     else:
         return f(o)
 
-def _where(where: t.Union["Where", t.Dict]) -> "Where":
+def ds_where(where: t.Union["Where", t.Dict]) -> "Where":
     if isinstance(where, Where):
         return where
     else:
         return Where(where)
 
+def ds_quote(o: t.Any) -> t.Union[str, int, float]:
+    cast = {str: lambda x: f"'{x}'", int: str, float: str}[type(o)]
+    return cast(o)
 
 def do_nothing(*args, **kwargs):
     pass
@@ -149,18 +152,16 @@ def post_connect(run_once=True):
 # SECTION 4: SQL Component Classes
 
 @dataclasses.dataclass
-class SQLType(DSObject):
+class SQLType():
 
 
-    def sql(self):
-        return 
+    class PickleList(DSObject):
+        def sql(self):
+            return ""
 
-    class PickleList(SQLType):
-        pass
-
-    class PickledDict(SQLType):
-        pass
-
+    class PickledDict(DSObject):
+        def sql(self):
+            return ""
 
 
 @dataclasses.dataclass
@@ -171,7 +172,7 @@ class Where(DSObject):
         if not self.where:
             return ""
         return (
-            f"""WHERE {joinmap(where.keys(), f=lambda x: f"{x} = :{x}", seperator=LINE_AND_SEPERATOR)}"""
+            f"""WHERE {joinmap(self.where.items(), f=lambda x: f"{x[0]} = {ds_quote(x[1])}", seperator=LINE_AND_SEPERATOR)}"""
         )
 
     @dataclasses.dataclass
@@ -181,7 +182,7 @@ class Where(DSObject):
         invert: bool = False
 
         def sql(self):
-            return f"""{_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.targets)})"""
+            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.targets, ds_quote)})"""
 
 
 @dataclasses.dataclass
@@ -197,7 +198,7 @@ class Statement:
     def sql(self) -> str:
         return "\n".join(
             [
-                _sql(self.components[clause])
+                ds_sql(self.components[clause])
                 for clause in self.statement_type
                 if clause in self.components
             ]
@@ -262,10 +263,10 @@ class ForeignKey(RegisteredObject):
         return f"Fkey on {joinmap(self.column)}"
 
     def sql(self):
-        return f"FOREIGN KEY ({joinmap(self.column)}) REFERENCES {_name(self.reference_table)}({joinmap(self.reference_column)})"
+        return f"FOREIGN KEY ({joinmap(self.column)}) REFERENCES {ds_name(self.reference_table)}({joinmap(self.reference_column)})"
 
     def __repr__(self):
-        return f"FKEY {_name(self.reference_table)}({joinmap(self.reference_column)})"
+        return f"FKEY {ds_name(self.reference_table)}({joinmap(self.reference_column)})"
 
 
 @dataclasses.dataclass
@@ -281,7 +282,7 @@ class Table(RegisteredObject):
         super().__post_init__()
 
     def sql(self):
-        return f"CREATE TABLE IF NOT EXISTS {self.name} (\n {joinmap([*self.column, *self.constraints], sql)})"
+        return f"CREATE TABLE IF NOT EXISTS {self.name} (\n {joinmap([*self.column, *self.constraints], ds_sql)})"
 
     def pkey(self) -> t.List[DSObject]:
         return [c for c in self.column if c.pkey]
@@ -305,10 +306,7 @@ class Table(RegisteredObject):
         return f"{self.identifier}({joinmap(self.column)})"
 
     def select(self, where: t.Dict = None, columns: t.List = None) -> Statement:
-        return (
-            f"""SELECT {joinmap(columns if columns else self.column, _qname)} \n FROM {self.name} \n {_where(where)}""",
-            where,
-        )
+        return f"""SELECT {joinmap(columns if columns else self.column, ds_qname)} \n FROM {self.name} \n {ds_sql(ds_where(where))}"""
 
     def insert(self, data: t.Dict, replace: bool = False):
         k = data.keys()
@@ -319,7 +317,7 @@ class Table(RegisteredObject):
 
     def delete(self, where: t.Dict) -> None:
         return (
-            f"""DELETE FROM {self.name} \n {_where(where)}""",
+            f"""DELETE FROM {self.name} \n {ds_sql(ds_where(where))}""",
             where,
         )
 
@@ -384,20 +382,19 @@ class Database:
     def query(
         self, table: t.Union["Table", str], where: t.Dict = None, columns: t.List = None
     ) -> t.List:
-        sql, values = self.table(table).select(where=where, columns=columns)
         with Cursor(_db=self) as cur:
-            result = cur.execute(sql, values)
+            sql = self.table(table).select(where=where, columns=columns)
+            print(sql)
+            result = cur.execute(sql)
         return result
 
     def create(self, table: t.Union["Table", str], data: t.Dict, replace=False) -> None:
-        sql, data = self.table(table).insert(data=data, replace=replace)
         with Cursor(_db=self) as cur:
-            cur.execute(sql, data)
+            cur.execute(*self.table(table).insert(data=data, replace=replace))
 
     def delete(self, table: t.Union["Table", str], where: t.Dict) -> None:
-        sql, values = self.table(table).delete(where=where)
         with Cursor(_db=self) as cur:
-            cur.execute(sql, values)
+            cur.execute(*self.table(table).delete(where=where))
 
     def init_db(self):
         """ Create basic db objects. """
@@ -406,7 +403,7 @@ class Database:
             [sql_set.append(o) for o in self.information_schema[t].values()]
             for t in ["Pragma", "Table"]
         ]
-        script = joinmap(sql_set, sql, seperator=COMMAND_SEPERATOR)
+        script = joinmap(sql_set, ds_sql, seperator=COMMAND_SEPERATOR)
         with Cursor(_db=self) as cur:
             cur._cursor.executescript(script)
 
@@ -449,5 +446,6 @@ class Cursor:
         return self._cursor.fetchall()
 
 if __name__ == "__main__":
-    i = Where.In(column="name", targets=["bob", "jim"], invert=True)
+    x = "stuff"
+    i = Where(where={"this": x})
     print(i.sql())

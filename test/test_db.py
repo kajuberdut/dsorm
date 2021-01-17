@@ -35,7 +35,7 @@ def table_setup(db_path):
 
 
 def test_name(table_setup):
-    assert name(table_setup) == "test"
+    assert ds_name(table_setup) == "test"
 
 
 def test_column_repr():
@@ -75,7 +75,7 @@ def test_init_db(db_path):
 
 
 def test_where_none():
-    assert where_sql(None) == ""
+    assert Where(None).sql() == ""
 
 
 @pytest.fixture(scope="function")
