@@ -13,7 +13,7 @@ from collections.abc import Iterable
 from enum import Enum
 
 
-# SECTION 1: SQL Command Clause Order Enumerations
+# SECTION 1: SQL Command Clause Order Enumerations and type lookups
 class CreateTableType(Enum):
     CREATE = 1
     COLUMN = 2
@@ -73,13 +73,14 @@ class RegisteredObject(DSObject):
 
 
 SQLFragment = t.Union[DSObject, str]
-
+Fragments = t.Union[Iterable, SQLFragment]
 
 # SECTION 3: Utility functions
-nlta = "\n\tAND "  #  New Line, Tab, "AND"
+LINE_AND_SEPERATOR = "\n\tAND "
+COMMAND_SEPERATOR = ";\n\n"
 
 
-def name(o: SQLFragment, qualify=False) -> str:
+def _name(o: SQLFragment, qualify=False) -> str:
     if isinstance(o, DSObject):
         if qualify:
             return o.identifier
@@ -89,10 +90,10 @@ def name(o: SQLFragment, qualify=False) -> str:
         return o
 
 
-qname = functools.partial(name, qualify=True)
+_qname = functools.partial(_name, qualify=True)
 
 
-def sql(o: SQLFragment) -> str:
+def _sql(o: SQLFragment) -> str:
     if isinstance(o, DSObject):
         return o.sql()
     else:
@@ -100,7 +101,7 @@ def sql(o: SQLFragment) -> str:
 
 
 def joinmap(
-    o: t.Union[Iterable, SQLFragment], f: t.Callable = name, seperator: str = ", "
+    o: Fragments, f: t.Callable = _name, seperator: str = ", "
 ) -> str:
     """ Returns a comma seperated list of f(i) for i in o. """
     if isinstance(o, Iterable) and not isinstance(o, str):
@@ -108,13 +109,11 @@ def joinmap(
     else:
         return f(o)
 
-
-def where_sql(where: t.Dict):
-    if not where:
-        return ""
-    return (
-        f"""WHERE {joinmap(where.keys(), f=lambda x: f"{x} = :{x}", seperator=nlta)}"""
-    )
+def _where(where: t.Union["Where", t.Dict]) -> "Where":
+    if isinstance(where, Where):
+        return where
+    else:
+        return Where(where)
 
 
 def do_nothing(*args, **kwargs):
@@ -148,6 +147,43 @@ def post_connect(run_once=True):
 
 
 # SECTION 4: SQL Component Classes
+
+@dataclasses.dataclass
+class SQLType(DSObject):
+
+
+    def sql(self):
+        return 
+
+    class PickleList(SQLType):
+        pass
+
+    class PickledDict(SQLType):
+        pass
+
+
+
+@dataclasses.dataclass
+class Where(DSObject):
+    where: t.Dict = None
+
+    def sql(self):
+        if not self.where:
+            return ""
+        return (
+            f"""WHERE {joinmap(where.keys(), f=lambda x: f"{x} = :{x}", seperator=LINE_AND_SEPERATOR)}"""
+        )
+
+    @dataclasses.dataclass
+    class In(DSObject):
+        column: SQLFragment
+        targets: Fragments
+        invert: bool = False
+
+        def sql(self):
+            return f"""{_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.targets)})"""
+
+
 @dataclasses.dataclass
 class Statement:
     """An object representing a sql statement and optional values."""
@@ -161,7 +197,7 @@ class Statement:
     def sql(self) -> str:
         return "\n".join(
             [
-                sql(self.components[clause])
+                _sql(self.components[clause])
                 for clause in self.statement_type
                 if clause in self.components
             ]
@@ -226,10 +262,10 @@ class ForeignKey(RegisteredObject):
         return f"Fkey on {joinmap(self.column)}"
 
     def sql(self):
-        return f"FOREIGN KEY ({joinmap(self.column)}) REFERENCES {name(self.reference_table)}({joinmap(self.reference_column)})"
+        return f"FOREIGN KEY ({joinmap(self.column)}) REFERENCES {_name(self.reference_table)}({joinmap(self.reference_column)})"
 
     def __repr__(self):
-        return f"FKEY {name(self.reference_table)}({joinmap(self.reference_column)})"
+        return f"FKEY {_name(self.reference_table)}({joinmap(self.reference_column)})"
 
 
 @dataclasses.dataclass
@@ -270,7 +306,7 @@ class Table(RegisteredObject):
 
     def select(self, where: t.Dict = None, columns: t.List = None) -> Statement:
         return (
-            f"""SELECT {joinmap(columns if columns else self.column, qname)} \n FROM {self.name} \n {where_sql(where)}""",
+            f"""SELECT {joinmap(columns if columns else self.column, _qname)} \n FROM {self.name} \n {_where(where)}""",
             where,
         )
 
@@ -283,7 +319,7 @@ class Table(RegisteredObject):
 
     def delete(self, where: t.Dict) -> None:
         return (
-            f"""DELETE FROM {self.name} \n {where_sql(where)}""",
+            f"""DELETE FROM {self.name} \n {_where(where)}""",
             where,
         )
 
@@ -370,8 +406,7 @@ class Database:
             [sql_set.append(o) for o in self.information_schema[t].values()]
             for t in ["Pragma", "Table"]
         ]
-        seperator = ";\n\n"
-        script = joinmap(sql_set, sql, seperator=seperator)
+        script = joinmap(sql_set, sql, seperator=COMMAND_SEPERATOR)
         with Cursor(_db=self) as cur:
             cur._cursor.executescript(script)
 
@@ -412,3 +447,7 @@ class Cursor:
         if commit:
             self.commit()
         return self._cursor.fetchall()
+
+if __name__ == "__main__":
+    i = Where.In(column="name", targets=["bob", "jim"], invert=True)
+    print(i.sql())
