@@ -74,6 +74,7 @@ class RegisteredObject(DSObject):
 
 SQLFragment = t.Union[DSObject, str, int, float]
 Fragments = t.Union[Iterable, SQLFragment]
+ComparisonOperator = t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
 
 # SECTION 3: Utility functions
 LINE_AND_SEPERATOR = "\n\tAND "
@@ -166,7 +167,43 @@ class SQLType():
 
 @dataclasses.dataclass
 class Where(DSObject):
-    where: t.Dict = None
+    where: t.Dict
+
+    @dataclasses.dataclass
+    class Comparison(DSObject):
+        column: SQLFragment
+        target: Fragments
+        operator: ComparisonOperator = "="
+
+        def sql(self):
+            return f"{self.column} {self.operator} {ds_quote(self.target)}"
+
+    @classmethod
+    def get_comparison(cls, column, target:Fragments, operator: ComparisonOperator = "=") -> "Where.Comparison":
+        return cls.Comparison(column=column, target=target, operator=operator)
+
+    equal = get_comparison
+    eq = equal
+    greater_than = functools.partialmethod(get_comparison, operator=">")
+    gt = greater_than
+    less_than = functools.partialmethod(get_comparison, operator="<")
+    lt = less_than
+
+
+    @dataclasses.dataclass
+    class In(DSObject):
+        column: SQLFragment
+        target: Fragments
+        invert: bool = False
+
+        def sql(self):
+            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.target, ds_quote)})"""
+
+    # @classmethod
+    # def in(cls, column: DSObject, target: t.List, invert=False) -> "Where.In":
+    #     return cls.In(column=column, target=target)
+
+    # not_in = functools.partialmethod(in, invert=True)
 
     def sql(self):
         if not self.where:
@@ -179,24 +216,6 @@ class Where(DSObject):
         return (
             f"""WHERE {joinmap(clause_list, ds_sql, seperator=LINE_AND_SEPERATOR)}"""
         )
-
-    @dataclasses.dataclass
-    class Comparison(DSObject):
-        column: SQLFragment
-        target: Fragments
-        comparator: str = "="
-
-        def sql(self):
-            return f"{self.column} {self.comparator} {ds_quote(self.target)}"
-
-    @dataclasses.dataclass
-    class In(DSObject):
-        column: SQLFragment
-        target: Fragments
-        invert: bool = False
-
-        def sql(self):
-            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.target, ds_quote)})"""
 
 
 @dataclasses.dataclass
