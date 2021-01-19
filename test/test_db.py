@@ -41,7 +41,7 @@ def test_name(table_setup):
 def test_column_repr():
     n = "Totally just a test"
     c = Column(name=n)
-    assert repr(c) == n
+    assert repr(c) == f"[{n}]"
 
 
 def test_foreign_key():
@@ -52,7 +52,7 @@ def test_foreign_key():
 
 
 def test_table_pkey(table_setup):
-    assert repr(table_setup.pkey()[0]) == "test.test_id"
+    assert repr(table_setup.pkey()[0]) == "[test].[test_id]"
 
 
 def test_schema(table_setup):

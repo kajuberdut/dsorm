@@ -187,39 +187,35 @@ Person = Table(
 )
 
 # Table objects have select, insert, and delete methods
-# Each returns sql and values you can use with execute
 sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
 with Cursor() as cur:
     cur.execute(sql, values)
-    # Or with unpacking (*)
-    print(cur.execute(*Person.select()))
+    print(cur.execute(Person.select()))
 
-# Even more convenient:
 # Database instances can access any table with Create, Query, or Delete.
 db = Database()
 
 # Inserts a record
-db.create(table="person", data={"first_name": "John", "last_name": "Doe"})
+db.create(table="person", data={"first_name": "Jane", "last_name": "Doe"})
 
 # Select a list of rows matching the where
 johns = db.query(
     "person",
-    where={"first_name": "John"},
+    where={"first_name": Where.is_in(target=["John", "Jane"])},
     columns=[
         "id",
-        "first_name || ' ' || last_name AS full_name", # Note that the columns can be sql
-    ],  
+        "first_name || ' ' || last_name AS full_name",  # Note that the columns can be sql
+    ],
 )
 print(johns)
 
 db.delete("person", where={"id": johns[0]["id"]})
 print([r["id"] for r in db.query("person")])
-
 ```
 Result:
-```json
-{"id": 1, "first_name": "John", "last_name": "Doe", "screen_name": None}
-[{"id": 1, "full_name": "John Doe"}, {"id": 2, "full_name": "John Doe"}]
+```python
+[{"id": 1, "first_name": "John", "last_name": "Doe", "screen_name": None}]
+[{"id": 1, "full_name": "John Doe"}, {"id": 2, "full_name": "Jane Doe"}]
 [2]
 ```
 

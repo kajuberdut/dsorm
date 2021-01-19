@@ -2,7 +2,6 @@
 D.S.O: Darned Simple ORM
 This module provides some abstractions of SQL concepts into Object Relation Mapping models.
 """
-import abc
 import dataclasses
 import functools
 import sqlite3
@@ -54,11 +53,14 @@ class UpdateType(Enum):
 
 
 # SECTION 2: Custom Types, abc classes and base classes
-@dataclasses.dataclass
-class DSObject(abc.ABC):
-    @abc.abstractmethod
-    def sql(self) -> str:
-        ...  # pragma: no cover
+class DSObject:
+    ...
+
+
+class Special(Enum):
+    Null = 1
+    NotNull = 2
+    TBD = 3
 
 
 class RegisteredObject(DSObject):
@@ -67,6 +69,9 @@ class RegisteredObject(DSObject):
     db: "Database" = None
 
     def __post_init__(self):
+        self.register()
+
+    def register(self):
         if self.db is None:
             self.db = Database
         self.db.information_schema[type(self).__name__][self.name] = self
@@ -101,14 +106,16 @@ def ds_sql(o: SQLFragment) -> str:
         return o
 
 
-def joinmap(
-    o: Fragments, f: t.Callable = ds_name, seperator: str = ", "
-) -> str:
+def joinmap(o: Fragments, f: t.Callable = ds_name, seperator: str = ", ") -> str:
     """ Returns a comma seperated list of f(i) for i in o. """
     if isinstance(o, Iterable) and not isinstance(o, str):
-        return seperator.join(map(f, o))
+        try:
+            return seperator.join(map(f, o))
+        except TypeError:
+            return seperator.join([str(o) for o in map(f, o)])
     else:
         return f(o)
+
 
 def ds_where(where: t.Union["Where", t.Dict]) -> "Where":
     if isinstance(where, Where):
@@ -116,9 +123,14 @@ def ds_where(where: t.Union["Where", t.Dict]) -> "Where":
     else:
         return Where(where)
 
+
 def ds_quote(o: t.Any) -> t.Union[str, int, float]:
-    cast = {str: lambda x: f"'{x}'", int: str, float: str}[type(o)]
-    return cast(o)
+    if isinstance(o, DSObject):
+        return o.cast()
+    else:
+        cast = {str: lambda x: f"'{x}'", int: str, float: str}[type(o)]
+        return cast(o)
+
 
 def do_nothing(*args, **kwargs):
     pass
@@ -151,11 +163,8 @@ def post_connect(run_once=True):
 
 
 # SECTION 4: SQL Component Classes
-
 @dataclasses.dataclass
-class SQLType():
-
-
+class SQLType:
     class PickleList(DSObject):
         def sql(self):
             return ""
@@ -163,59 +172,6 @@ class SQLType():
     class PickledDict(DSObject):
         def sql(self):
             return ""
-
-
-@dataclasses.dataclass
-class Where(DSObject):
-    where: t.Dict
-
-    @dataclasses.dataclass
-    class Comparison(DSObject):
-        column: SQLFragment
-        target: Fragments
-        operator: ComparisonOperator = "="
-
-        def sql(self):
-            return f"{self.column} {self.operator} {ds_quote(self.target)}"
-
-    @classmethod
-    def get_comparison(cls, column, target:Fragments, operator: ComparisonOperator = "=") -> "Where.Comparison":
-        return cls.Comparison(column=column, target=target, operator=operator)
-
-    equal = get_comparison
-    eq = equal
-    greater_than = functools.partialmethod(get_comparison, operator=">")
-    gt = greater_than
-    less_than = functools.partialmethod(get_comparison, operator="<")
-    lt = less_than
-
-
-    @dataclasses.dataclass
-    class In(DSObject):
-        column: SQLFragment
-        target: Fragments
-        invert: bool = False
-
-        def sql(self):
-            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.target, ds_quote)})"""
-
-    # @classmethod
-    # def in(cls, column: DSObject, target: t.List, invert=False) -> "Where.In":
-    #     return cls.In(column=column, target=target)
-
-    # not_in = functools.partialmethod(in, invert=True)
-
-    def sql(self):
-        if not self.where:
-            return ""
-        clause_list = list()
-        for k, v in self.where.items():
-            if isinstance(v, str):
-                clause_list.append(self.Comparison(column=k, target=v))
-
-        return (
-            f"""WHERE {joinmap(clause_list, ds_sql, seperator=LINE_AND_SEPERATOR)}"""
-        )
 
 
 @dataclasses.dataclass
@@ -236,6 +192,73 @@ class Statement:
                 if clause in self.components
             ]
         )
+
+
+@dataclasses.dataclass
+class Where(DSObject):
+    where: t.Dict
+
+    def sql(self):
+        if not self.where:
+            return ""
+        clause_list = list()
+        for k, v in self.where.items():
+            if isinstance(v, (str, int, float)):
+                v = self.get_comparison(column=k, target=v)
+            if hasattr(v, "column") and v.column == Special.TBD:
+                v.column = Column(name=k)
+
+            clause_list.append(v)
+        return f"""WHERE {joinmap(clause_list, ds_sql, seperator=LINE_AND_SEPERATOR)}"""
+
+    @dataclasses.dataclass
+    class Comparison(DSObject):
+        column: SQLFragment
+        target: SQLFragment
+        operator: ComparisonOperator
+
+        def sql(self):
+            if self.column == Special.TBD:
+                raise TypeError("Column argument is required")
+            return f"{ds_qname(self.column)} {self.operator} {ds_quote(self.target)}"
+
+    @classmethod
+    def get_comparison(
+        cls,
+        column: SQLFragment = Special.TBD,
+        target: SQLFragment = None,
+        operator: ComparisonOperator = "=",
+    ) -> "Where.Comparison":
+        if target is None:
+            raise TypeError("target argument is required")
+        return cls.Comparison(column=column, target=target, operator=operator)
+
+    equal = eq = functools.partialmethod(get_comparison, operator="=")
+    not_equal = ne = functools.partialmethod(get_comparison, operator="!=")
+    greater_than = gt = functools.partialmethod(get_comparison, operator=">")
+    less_than = lt = functools.partialmethod(get_comparison, operator="<")
+
+    @dataclasses.dataclass
+    class In(DSObject):
+        column: SQLFragment
+        target: Fragments
+        invert: bool = False
+
+        def sql(self):
+            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.target, ds_quote)})"""
+
+    @classmethod
+    def is_in(
+        cls,
+        column: SQLFragment = Special.TBD,
+        target: Fragments = None,
+        invert: bool = False,
+    ) -> "Where.In":
+        if target is None:
+            raise TypeError("target argument is required")
+        return cls.In(column=column, target=target, invert=invert)
+
+    not_in = functools.partialmethod(is_in, invert=True)
 
 
 @dataclasses.dataclass
@@ -277,12 +300,15 @@ class Column(RegisteredObject):
     @property
     def identifier(self):
         if self.table and self.table.name:
-            return self.table.name + "." + self.name
+            return f"[{self.table.name}].[{self.name}]"
         else:
-            return self.name
+            return f"[{self.name}]"
 
     def __repr__(self):
         return self.identifier
+
+    def cast(self):
+        return ".".join(f"[{s.strip('][')}]" for s in self.identifier.split("."))
 
 
 @dataclasses.dataclass
@@ -350,7 +376,7 @@ class Table(RegisteredObject):
 
     def delete(self, where: t.Dict) -> None:
         return (
-            f"""DELETE FROM {self.name} \n {ds_sql(ds_where(where))}""",
+            f"""DELETE FROM {self.name} \n {ds_where(where).sql()}""",
             where,
         )
 
@@ -417,7 +443,6 @@ class Database:
     ) -> t.List:
         with Cursor(_db=self) as cur:
             sql = self.table(table).select(where=where, columns=columns)
-            print(sql)
             result = cur.execute(sql)
         return result
 
@@ -477,8 +502,3 @@ class Cursor:
         if commit:
             self.commit()
         return self._cursor.fetchall()
-
-if __name__ == "__main__":
-    x = "stuff"
-    i = Where(where={"this": x})
-    print(i.sql())
