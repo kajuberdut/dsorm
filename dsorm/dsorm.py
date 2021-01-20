@@ -12,46 +12,6 @@ from collections.abc import Iterable
 from enum import Enum
 
 
-# SECTION 1: SQL Command Clause Order Enumerations and type lookups
-class CreateTableType(Enum):
-    CREATE = 1
-    COLUMN = 2
-    CONSTRAINT = 3
-
-
-class SelectType(Enum):
-    CTE = 1
-    SELECT = 2
-    FROM = 4
-    JOIN = 6
-    WHERE = 7
-    GROUP = 9
-    HAVING = 10
-    ORDER = 11
-    LIMIT = 12
-    OFFSET = 13
-
-
-class DeleteType(Enum):
-    FROM = 1
-    WHERE = 2
-
-
-class InsertType(Enum):
-    CTE = 1
-    INSERT = 2
-    COLUMNS = 3
-    FROM = 4
-    VALUES = 5
-
-
-class UpdateType(Enum):
-    CTE = 1
-    UPDATE = 2
-    SET = 3
-    WHERE = 4
-
-
 # SECTION 2: Custom Types, abc classes and base classes
 class DSObject:
     ...
@@ -192,6 +152,23 @@ class Statement:
                 if clause in self.components
             ]
         )
+
+    class StatementOrder(Enum):
+        CTE = 1
+        UPDATE = 2
+        SET = 3
+        INSERT = 4
+        INSERT_COLUMNS = 5
+        SELECT_COLUMNS = 6
+        FROM = 7
+        JOIN = 8
+        VALUES = 9
+        WHERE = 10
+        GROUP = 11
+        HAVING = 12
+        ORDER = 13
+        LIMIT = 14
+        OFFSET = 15
 
 
 @dataclasses.dataclass
@@ -379,6 +356,11 @@ class Table(RegisteredObject):
             f"""DELETE FROM {self.name} \n {ds_where(where).sql()}""",
             where,
         )
+
+    class CreateTableType(Enum):
+        CREATE = 1
+        COLUMN = 2
+        CONSTRAINT = 3
 
 
 # SECTION 5: Database

@@ -107,10 +107,10 @@ def test_pragma():
 
 
 def test_statement():
-    t = SelectType
+    t = Statement.StatementOrder
     s = Statement(
         statement_type=t,
-        components={t.SELECT: "SELECT 1 as thing", t.WHERE: "WHERE 1=1"},
+        components={t: "SELECT 1 as thing", t.WHERE: "WHERE 1=1"},
     )
     assert s.sql is not None
 

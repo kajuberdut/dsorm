@@ -227,7 +227,7 @@ It's darned simple.
 
 Needed features:
 * JOIN between objects
-* More WHERE operators (not, or, clause grouping)
+* WHERE clause grouping
 * Grouping/Aggregates
 * Order/Limit/Offset
 
