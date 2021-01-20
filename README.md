@@ -171,7 +171,7 @@ conf = Pragma(
 Person = Table(
     name="person",
     column=[
-        Column("id", sqltype="INTEGER", pkey=True),
+        Column("id", python_type=int, pkey=True),
         Column("first_name", nullable=False),
         Column("last_name", nullable=False),
         Column("screen_name", unique=True),

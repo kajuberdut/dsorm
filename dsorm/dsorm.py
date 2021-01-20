@@ -11,16 +11,85 @@ from collections.abc import Iterable
 
 from enum import Enum
 
-
 # SECTION 2: Custom Types, abc classes and base classes
-class DSObject:
-    ...
 
 
 class Special(Enum):
     Null = 1
     NotNull = 2
     TBD = 3
+
+
+@dataclasses.dataclass
+class TypeHandler:
+    sql_type: str
+    python_type: type
+
+    @staticmethod
+    def p2s(value) -> t.Union[int, float, str, bytes]:
+        """ This method should return a value that would be valid "as is" in a sql statement. """
+        return value
+
+    @staticmethod
+    def s2p(value) -> t.Any:
+        """ This method should handle converting a SQLite datatype to a Python datatype. """
+        return value
+
+
+class StrHandler(TypeHandler):
+    sql_type: str = "TEXT"
+    python_type: type = str
+
+    @staticmethod
+    def p2s(value) -> t.Union[int, float, str, bytes]:
+        """ surround with single quotes to embed string literals in sql """
+        return f"'{str(value)}'"
+
+    @staticmethod
+    def s2p(value) -> t.Any:
+        return str(value)
+
+
+class IntHandler(TypeHandler):
+    sql_type: str = "INTEGER"
+    python_type: type = int
+
+    @staticmethod
+    def p2s(value) -> t.Union[int, float, str, bytes]:
+        """ surround with single quotes to embed string literals in sql """
+        return str(value)
+
+    @staticmethod
+    def s2p(value) -> t.Any:
+        if value is not None:
+            return int(value)
+
+
+class FloatHandler(TypeHandler):
+    sql_type: str = "REAL"
+    python_type: type = float
+
+    @staticmethod
+    def p2s(self, value) -> t.Union[int, float, str, bytes]:
+        """ surround with single quotes to embed string literals in sql """
+        return str(value)
+
+    @staticmethod
+    def s2p(self, value) -> t.Any:
+        if value is not None:
+            return float(value)
+
+
+DEFAULT_HANDLERS = {str: StrHandler, int: IntHandler, float: FloatHandler}
+
+
+class DSObject:
+    ...
+
+
+SQLFragment = t.Union[DSObject, str, int, float]
+Fragments = t.Union[Iterable, SQLFragment]
+ComparisonOperator = t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
 
 
 class RegisteredObject(DSObject):
@@ -36,10 +105,6 @@ class RegisteredObject(DSObject):
             self.db = Database
         self.db.information_schema[type(self).__name__][self.name] = self
 
-
-SQLFragment = t.Union[DSObject, str, int, float]
-Fragments = t.Union[Iterable, SQLFragment]
-ComparisonOperator = t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
 
 # SECTION 3: Utility functions
 LINE_AND_SEPERATOR = "\n\tAND "
@@ -66,17 +131,6 @@ def ds_sql(o: SQLFragment) -> str:
         return o
 
 
-def joinmap(o: Fragments, f: t.Callable = ds_name, seperator: str = ", ") -> str:
-    """ Returns a comma seperated list of f(i) for i in o. """
-    if isinstance(o, Iterable) and not isinstance(o, str):
-        try:
-            return seperator.join(map(f, o))
-        except TypeError:
-            return seperator.join([str(o) for o in map(f, o)])
-    else:
-        return f(o)
-
-
 def ds_where(where: t.Union["Where", t.Dict]) -> "Where":
     if isinstance(where, Where):
         return where
@@ -88,8 +142,18 @@ def ds_quote(o: t.Any) -> t.Union[str, int, float]:
     if isinstance(o, DSObject):
         return o.cast()
     else:
-        cast = {str: lambda x: f"'{x}'", int: str, float: str}[type(o)]
-        return cast(o)
+        return DEFAULT_HANDLERS[type(o)].p2s(o)
+
+
+def joinmap(o: Fragments, f: t.Callable = ds_name, seperator: str = ", ") -> str:
+    """ Returns a comma seperated list of f(i) for i in o. """
+    if isinstance(o, Iterable) and not isinstance(o, str):
+        try:
+            return seperator.join(map(f, o))
+        except TypeError:
+            return seperator.join([str(o) for o in map(f, o)])
+    else:
+        return f(o)
 
 
 def do_nothing(*args, **kwargs):
@@ -123,17 +187,6 @@ def post_connect(run_once=True):
 
 
 # SECTION 4: SQL Component Classes
-@dataclasses.dataclass
-class SQLType:
-    class PickleList(DSObject):
-        def sql(self):
-            return ""
-
-    class PickledDict(DSObject):
-        def sql(self):
-            return ""
-
-
 @dataclasses.dataclass
 class Statement:
     """An object representing a sql statement and optional values."""
@@ -250,14 +303,19 @@ class Pragma(RegisteredObject):
 @dataclasses.dataclass
 class Column(RegisteredObject):
     name: str
-    sqltype: str = ""
+    python_type: type = str
+    type_handler: TypeHandler = None
     unique: bool = False
     nullable: bool = True
     pkey: bool = False
     _table: "Table" = None
 
+    def __post_init__(self):
+        if self.type_handler is None:
+            self.type_handler = DEFAULT_HANDLERS[self.python_type]
+
     def sql(self):
-        blocks = [self.name, self.sqltype]
+        blocks = [self.name, self.type_handler.sql_type]
         if not self.nullable:
             blocks.append("NOT NULL")
         if self.unique:

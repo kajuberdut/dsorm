@@ -26,7 +26,7 @@ def table_setup(db_path):
         test_table = Table(
             name="test",
             column=[
-                Column("test_id", sqltype="INTEGER", pkey=True),
+                Column("test_id", python_type=int, pkey=True),
                 Column("stuff", unique=True, nullable=False),
             ],
         )
