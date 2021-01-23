@@ -195,16 +195,13 @@ Contributions are what make the open source community such an amazing place to b
 6. Open a Pull Request
 
 ### Cloning / Development setup
-1. Clone the repo
+1. Clone the repo and install
     ```sh
     git clone https://github.com/kajuberdut/dsorm.git
-    ```
-2. Pipenv install dev requirements
-    ```sh
+    cd dsorm
     pipenv install --dev
-    pipenv install -e .
     ```
-3. Run tests
+2. Run tests
     ```sh
     pipenv shell
     py.test
