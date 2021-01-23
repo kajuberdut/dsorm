@@ -117,9 +117,7 @@ For information about cloning and dev setup see: [Contributing](#Contributing)
 
 <!-- USAGE EXAMPLES -->
 ## Usage
-
-### Database
-Here is an example showing dsORM objects.
+Here is an example showing basic usage.
 
 ```python
 from dsorm import Column, Database, Table, Where
