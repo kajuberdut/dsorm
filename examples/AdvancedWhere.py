@@ -58,6 +58,9 @@ f = Where(
     where={"gender": Gender.FEMALE, "age": Where.greater_than_or_equal(target=67)}
 )
 
+# Any value in a where dictionary can contain another where clause
+# The sub-where will be nested in () automatically but you will need to
+#   set "OR", "AND" or "" in the key.
 complex_where = Where({"": f, "OR": m})  # Note that the first clause has an empty key
 
 # Example of a complex where clause:
