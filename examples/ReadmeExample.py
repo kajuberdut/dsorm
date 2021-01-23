@@ -1,10 +1,4 @@
-from dsorm import (
-    Column,
-    Cursor,
-    Database,
-    Table,
-    Where,
-)
+from dsorm import Column, Database, Table, Where
 
 Person = Table(
     name="person",
@@ -12,7 +6,6 @@ Person = Table(
         Column("id", python_type=int, pkey=True),
         Column("first_name", nullable=False),
         Column("last_name", nullable=False),
-        Column("screen_name", unique=True),
     ],
 )
 
@@ -21,7 +14,7 @@ Database.default_db = ":memory:"
 db = Database()
 db.init_db()  # This creates all tables
 
-# Inserts a record
+# Insert records
 db.insert(
     table="person",
     data=[
@@ -30,7 +23,7 @@ db.insert(
     ],
 )
 
-# Query returns a list of dicts representing rows matching the where
+# Query returns a list of dicts of rows matching the where
 does = db.query(
     "person",
     where={"first_name": Where.like(target="J%n%")},
@@ -42,6 +35,7 @@ does = db.query(
 print(does)
 # [{"id": 1, "full_name": "John Doe"}, {"id": 2, "full_name": "Jane Doe"}]
 
+# And Delete
 db.delete("person", where={"id": does[0]["id"]})
 print([r["id"] for r in db.query("person")])
 # [2]

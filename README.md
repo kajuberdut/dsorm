@@ -119,37 +119,10 @@ For information about cloning and dev setup see: [Contributing](#Contributing)
 ## Usage
 
 ### Database
-Although more advanced usage may use multiple databases, a single default db can be set globally.
+Here is an example showing dsORM objects.
 
 ```python
-from dsorm import Database, Cursor
-
-Database.default_db = ":memory:"
-
-# Cursor is a context manager used in a "with" statement.
-# Cursor takes a db_path or uses the default_db set above.
-with Cursor() as cur:
-    print(cur.execute("SELECT 1 AS thingy"))
-```
-Result: 
-```json
-[{"thingy": 1}]
-```
-
-This snippet demonstrates some advantages over using Python's build in SQLite3 directly. 
-* The Cursor class makes opening/closing the cursor effortless. 
-* dsORM automatically employs a dictionary row factory. No more arcane Row objects.
-
-Here is a longer example showing dsORM objects.
-
-```python
-from dsorm import (
-    Column,
-    Cursor,
-    Database,
-    Table,
-    Where,
-)
+from dsorm import Column, Database, Table, Where
 
 Person = Table(
     name="person",
@@ -157,7 +130,6 @@ Person = Table(
         Column("id", python_type=int, pkey=True),
         Column("first_name", nullable=False),
         Column("last_name", nullable=False),
-        Column("screen_name", unique=True),
     ],
 )
 
@@ -166,7 +138,7 @@ Database.default_db = ":memory:"
 db = Database()
 db.init_db()  # This creates all tables
 
-# Inserts a record
+# Insert records
 db.insert(
     table="person",
     data=[
@@ -175,7 +147,7 @@ db.insert(
     ],
 )
 
-# Query returns a list of dicts representing rows matching the where
+# Query returns a list of dicts of rows matching the where
 does = db.query(
     "person",
     where={"first_name": Where.like(target="J%n%")},
@@ -187,6 +159,7 @@ does = db.query(
 print(does)
 # [{"id": 1, "full_name": "John Doe"}, {"id": 2, "full_name": "Jane Doe"}]
 
+# And Delete
 db.delete("person", where={"id": does[0]["id"]})
 print([r["id"] for r in db.query("person")])
 # [2]
