@@ -76,6 +76,16 @@ def test_init_db(db_path):
 
 def test_where_none():
     assert Where(None).sql() == ""
+    w = Where({1: 2})
+    assert ds_where({1: 2}) == w
+    assert ds_where(w) == w
+
+def test_comparison():
+    w = Where({"column_name": Where.get_comparison(target="thingy")})
+    assert w.sql() == "WHERE [column_name] = 'thingy'"
+
+def test_cast():
+    assert ds_quote(Column(name="bob")) == "[bob]"
 
 
 @pytest.fixture(scope="function")
@@ -85,6 +95,10 @@ def stuff():
 
 def test_joinmap_single(table_setup):
     assert joinmap(table_setup) == table_setup.name
+
+
+def test_joinmap_int():
+    assert joinmap([1, 2, 3]) == "1, 2, 3"
 
 
 def test_db_insert_retreive_delete(table_setup, db, stuff):
@@ -119,12 +133,32 @@ def test_no_default():
     with pytest.raises(TypeError):
         Database().connect()
 
+def test_comparison_no_target():
+    with pytest.raises(TypeError):
+        w = Where.get_comparison()
+        w.sql()
+
+def test_comparison_no_column():
+    with pytest.raises(TypeError):
+        w = Where.get_comparison(target="thingy")
+        w.sql()
+
+def test_in():
+    w = Where.is_in(target=[])
+    w.sql()
+
+def test_in_no_target():
+    with pytest.raises(TypeError):
+        w = Where.is_in()
+        w.sql()
 
 def test_default(table_setup):
     Database.default_db = ":memory:"
     db = Database()
+    db.default_db = ":memory:"
     db.query(table="test", columns=["1 as thing"])
     Database.default_db = None
+
 
 
 def test_db_close():

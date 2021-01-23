@@ -136,7 +136,7 @@ def do_nothing(*args, **kwargs):
     pass
 
 
-def pre_connect(run_once=True):
+def pre_connect(run_once=True):  # pragma: no cover
     def pre_wrapper(func):
         @functools.wraps(func)
         def pre(*args):
@@ -149,7 +149,7 @@ def pre_connect(run_once=True):
     return pre_wrapper
 
 
-def post_connect(run_once=True):
+def post_connect(run_once=True):  # pragma: no cover
     def post_wrapper(func):
         @functools.wraps(func)
         def post(*args):
@@ -163,17 +163,6 @@ def post_connect(run_once=True):
 
 
 # SECTION 4: SQL Component Classes
-@dataclasses.dataclass
-class SQLType:
-    class PickleList(DSObject):
-        def sql(self):
-            return ""
-
-    class PickledDict(DSObject):
-        def sql(self):
-            return ""
-
-
 @dataclasses.dataclass
 class Statement:
     """An object representing a sql statement and optional values."""
@@ -356,10 +345,7 @@ class Table(RegisteredObject):
 
     @property
     def identifier(self):
-        if self.schema:
-            return self.schema + "." + self.name
-        else:
-            return self.name
+        return self.schema + "." + self.name
 
     def __repr__(self):
         return f"{self.identifier}({joinmap(self.column)})"
@@ -400,10 +386,6 @@ class Database:
     @property
     def default_db(self):
         return self.__class__._default_db
-
-    @default_db.setter
-    def default_db(self, new):
-        self.__class__._default_db = new
 
     def __init__(self, db_path: str = None):
         self.db_path = db_path
