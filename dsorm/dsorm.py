@@ -213,7 +213,7 @@ def do_nothing(*args, **kwargs):
     pass
 
 
-def pre_connect(run_once=True):
+def pre_connect(run_once=True):  # pragma: no cover
     def pre_wrapper(func):
         @functools.wraps(func)
         def pre(*args):
@@ -226,7 +226,7 @@ def pre_connect(run_once=True):
     return pre_wrapper
 
 
-def post_connect(run_once=True):
+def post_connect(run_once=True):  # pragma: no cover
     def post_wrapper(func):
         @functools.wraps(func)
         def post(*args):
@@ -383,7 +383,7 @@ class Column(RegisteredObject):
         except TypeError as e:
             if "is not a callable object" in str(e):
                 return None
-            else:
+            else:  # pragma: no cover
                 raise e
 
     def default_sql(self):
