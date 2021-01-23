@@ -1,14 +1,18 @@
-from typing import Type
 import uuid
 from datetime import datetime
 
 import pytest
-from dsorm import *
+from dsorm import (Column, Cursor, Database, DateHandler, FloatHandler,
+                   ForeignKey, IntHandler, Pragma, Statement, Table,
+                   TypeHandler, TypeMaster, Where, ds_name, ds_quote, ds_where,
+                   joinmap)
+
 
 def test_db_setter():
     db = Database(":memory:")
     db.default_db = ":memory:"
     db.default_db = None
+
 
 @pytest.fixture(scope="session")
 def db_path():
@@ -69,7 +73,7 @@ def test_schema(table_setup):
 
 
 def test_table_fkey(table_setup):
-    t = Table(
+    Table(
         name="dependant",
         column=[Column(name="SomeColumn"), Column(name="test_id")],
         constraints=[table_setup.fkey()],
@@ -111,7 +115,7 @@ def test_joinmap_int():
 
 def test_db_insert_retreive_delete(table_setup, db, stuff):
     d = {"stuff": stuff}
-    db.create("test", data=d)
+    db.insert("test", data=d)
     result = db.query("test", where=d)
     assert result[0]["stuff"] == stuff
     db.delete("test", where=d)
@@ -228,7 +232,7 @@ def test_custom_handler():
     db = Database(db_path=":memory:")
     db.init_db()
     assert db.table(t) == t
-    db.create("NoneTable", data={"NoneColumn": NoneClass()})
+    db.insert("NoneTable", data={"NoneColumn": NoneClass()})
     db.query("NoneTable", columns=["NoneColumn", "1 as thing"])
     db.query("NoneTable", columns=["NoneColumn", "1 as thing"], cast_values=False)
 

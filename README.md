@@ -182,7 +182,7 @@ Person = Table(
     name="person",
     column=[
         Column("id", python_type=int, pkey=True),
-        Column("first_name", nullable=False),
+        Column("first_name", nullable=False), 
         Column("last_name", nullable=False),
         Column("screen_name", unique=True),
     ],
@@ -199,22 +199,21 @@ with Cursor() as cur:
 db = Database()
 
 # Inserts a record
-db.create(table="person", data={"first_name": "Jane", "last_name": "Doe"})
+db.insert(table="person", data={"first_name": "Jane", "last_name": "Doe"})
 
 # Select a list of rows matching the where
-johns = db.query(
+does = db.query(
     "person",
-    where={"first_name": Where.is_in(target=["John", "Jane"])},
+    where={"first_name": Where.like(target="J%n%")},
     columns=[
         "id",
         "first_name || ' ' || last_name AS full_name",  # Note that the columns can be sql
     ],
 )
-print(johns)
+print(does)
 
-db.delete("person", where={"id": johns[0]["id"]})
+db.delete("person", where={"id": does[0]["id"]})
 print([r["id"] for r in db.query("person")])
-
 ```
 Result:
 ```python
@@ -233,7 +232,6 @@ It's darned simple.
 
 Needed features:
 * JOIN between objects
-* WHERE clause grouping
 * Grouping/Aggregates
 * Order/Limit/Offset
 

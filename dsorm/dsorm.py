@@ -156,8 +156,8 @@ class RegisteredObject(DSObject):
 
 
 # SECTION 3: Utility functions
-LINE_AND_SEPERATOR = "\n\tAND "
-COMMAND_SEPERATOR = ";\n\n"
+LINE = "\n"
+TAB = "\t"
 
 
 def no_cast(x) -> t.Any:
@@ -279,19 +279,25 @@ class Statement(DSObject):
 @dataclasses.dataclass
 class Where(DSObject):
     where: t.Dict
+    seperator: str = LINE + TAB + "AND"
+    keyword: str = "WHERE"
 
     def sql(self):
         if not self.where:
             return ""
         clause_list = list()
+        extras = list()
         for k, v in self.where.items():
-            if isinstance(v, (str, int, float)):
-                v = self.get_comparison(column=k, target=v)
-            if hasattr(v, "column") and v.column == Special.TBD:
-                v.column = Column(name=k)
-
-            clause_list.append(v)
-        return f"""WHERE {joinmap(clause_list, ds_sql, seperator=LINE_AND_SEPERATOR)}"""
+            if isinstance(v, Where):
+                v.keyword = ""
+                extras.append(f"{LINE + k} ({v.sql() + LINE})")
+            else:
+                if isinstance(v, (str, int, float)):
+                    v = self.get_comparison(column=k, target=v)
+                if hasattr(v, "column") and v.column == Special.TBD:
+                    v.column = Column(name=k)
+                clause_list.append(v)
+        return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=self.seperator)}{joinmap(extras, seperator=LINE)}"""
 
     @dataclasses.dataclass
     class Comparison(DSObject):
@@ -319,6 +325,7 @@ class Where(DSObject):
     not_equal = ne = functools.partialmethod(get_comparison, operator="!=")
     greater_than = gt = functools.partialmethod(get_comparison, operator=">")
     less_than = lt = functools.partialmethod(get_comparison, operator="<")
+    like = functools.partialmethod(get_comparison, operator="LIKE")
 
     @dataclasses.dataclass
     class In(DSObject):
@@ -618,7 +625,7 @@ class Database:
             return table.caster.cast_values(result)
         return result
 
-    def create(self, table: t.Union["Table", str], data: t.Dict, replace=False) -> None:
+    def insert(self, table: t.Union["Table", str], data: t.Dict, replace=False) -> None:
         with Cursor(_db=self) as cur:
             stmt = self.table(table).insert(data=data, replace=replace)
             cur.execute(command=stmt)
@@ -634,7 +641,7 @@ class Database:
             [sql_set.append(o) for o in self.information_schema[t].values()]
             for t in ["Pragma", "Table"]
         ]
-        script = joinmap(sql_set, ds_sql, seperator=COMMAND_SEPERATOR)
+        script = joinmap(sql_set, ds_sql, seperator=";" + LINE + LINE)
         with Cursor(_db=self) as cur:
             cur._cursor.executescript(script)
 
