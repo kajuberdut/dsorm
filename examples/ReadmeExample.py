@@ -1,4 +1,14 @@
-from dsorm import *  # Don't do this in real code: https://www.python.org/dev/peps/pep-0008/#imports
+from dsorm import (
+    Column,
+    Cursor,
+    Database,
+    Pragma,
+    Table,
+    Where,
+    post_connect,
+    pre_connect,
+)
+
 
 # The pre_connect wrapper let's you set a function that will be called before the first connection
 @pre_connect()
@@ -34,9 +44,10 @@ Person = Table(
 )
 
 # Table objects have select, insert, and delete methods
-sql, values = Person.insert(data={"first_name": "John", "last_name": "Doe"})
+stmt = Person.insert(data={"first_name": "John", "last_name": "Doe"})
+
 with Cursor() as cur:
-    cur.execute(sql, values)
+    cur.execute(stmt.sql())
     print(cur.execute(Person.select()))
 
 # Database instances can access any table with Create, Query, or Delete.

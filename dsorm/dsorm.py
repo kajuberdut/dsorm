@@ -8,8 +8,9 @@ import sqlite3
 import typing as t
 from collections import defaultdict
 from collections.abc import Iterable
-
+from datetime import datetime
 from enum import Enum
+from inspect import signature
 
 # SECTION 2: Custom Types, abc classes and base classes
 
@@ -70,17 +71,65 @@ class FloatHandler(TypeHandler):
     python_type: type = float
 
     @staticmethod
-    def p2s(self, value) -> t.Union[int, float, str, bytes]:
+    def p2s(value) -> t.Union[int, float, str, bytes]:
         """ surround with single quotes to embed string literals in sql """
         return str(value)
 
     @staticmethod
-    def s2p(self, value) -> t.Any:
+    def s2p(value) -> t.Any:
         if value is not None:
             return float(value)
 
 
-DEFAULT_HANDLERS = {str: StrHandler, int: IntHandler, float: FloatHandler}
+class DateHandler(TypeHandler):
+    sql_type: str = "INT"
+    python_type: type = datetime
+
+    @staticmethod
+    def p2s(value: datetime) -> t.Union[int, float, str, bytes]:
+        """ Convert datetime to timestamp """
+        return str(value.timestamp())
+
+    @staticmethod
+    def s2p(value) -> t.Any:
+        if value is not None:
+            return datetime.fromtimestamp(value)
+
+
+class TypeMaster:
+    type_handlers = {
+        str: StrHandler,
+        int: IntHandler,
+        float: FloatHandler,
+        datetime: DateHandler,
+    }
+
+    @classmethod
+    def register(cls, handler: TypeHandler) -> None:
+        cls.type_handlers[handler.python_type] = handler
+
+    @classmethod
+    def get(cls, python_type: type) -> t.Callable:
+        return cls.type_handlers.get(python_type, no_cast)
+
+    def __getitem__(self, key: type) -> TypeHandler:
+        return self.type_handlers[key]
+
+
+class TableCaster:
+    def __init__(self, table: "Table"):
+        self.key_casters = {
+            c.name: TypeMaster.get(c.python_type).s2p for c in table.column
+        }
+
+    def cast(self, column_name: str, value: t.Any) -> t.Any:
+        return self.key_casters.get(column_name, no_cast)(value)
+
+    def cast_values(self, values: t.Union[t.List, t.Dict]) -> t.List:
+        return [
+            {k: self.cast(k, v) for k, v in d.items()}
+            for d in (values if isinstance(values, list) else [values])
+        ]
 
 
 class DSObject:
@@ -109,6 +158,10 @@ class RegisteredObject(DSObject):
 # SECTION 3: Utility functions
 LINE_AND_SEPERATOR = "\n\tAND "
 COMMAND_SEPERATOR = ";\n\n"
+
+
+def no_cast(x) -> t.Any:
+    return x
 
 
 def ds_name(o: SQLFragment, qualify=False) -> str:
@@ -142,7 +195,7 @@ def ds_quote(o: t.Any) -> t.Union[str, int, float]:
     if isinstance(o, DSObject):
         return o.cast()
     else:
-        return DEFAULT_HANDLERS[type(o)].p2s(o)
+        return TypeMaster.get(type(o)).p2s(o)
 
 
 def joinmap(o: Fragments, f: t.Callable = ds_name, seperator: str = ", ") -> str:
@@ -188,40 +241,39 @@ def post_connect(run_once=True):
 
 # SECTION 4: SQL Component Classes
 @dataclasses.dataclass
-class Statement:
+class Statement(DSObject):
     """An object representing a sql statement and optional values."""
 
-    statement_type: Enum
     components: t.Dict[Enum, str] = dataclasses.field(default_factory=dict)
-    values: t.Dict = None
     _db: "Database" = None
 
-    @property
-    def sql(self) -> str:
-        return "\n".join(
-            [
-                ds_sql(self.components[clause])
-                for clause in self.statement_type
-                if clause in self.components
-            ]
-        )
-
-    class StatementOrder(Enum):
+    class Order(Enum):
         CTE = 1
         UPDATE = 2
         SET = 3
         INSERT = 4
         INSERT_COLUMNS = 5
-        SELECT_COLUMNS = 6
-        FROM = 7
-        JOIN = 8
-        VALUES = 9
-        WHERE = 10
-        GROUP = 11
-        HAVING = 12
-        ORDER = 13
-        LIMIT = 14
-        OFFSET = 15
+        SELECT = 6
+        SELECT_COLUMNS = 7
+        DELETE = 8
+        FROM = 9
+        JOIN = 10
+        VALUES = 11
+        WHERE = 12
+        GROUP = 13
+        HAVING = 14
+        ORDER = 15
+        LIMIT = 16
+        OFFSET = 17
+
+    def sql(self) -> str:
+        return "\n".join(
+            [
+                ds_sql(self.components[clause])
+                for clause in self.Order
+                if clause in self.components
+            ]
+        )
 
 
 @dataclasses.dataclass
@@ -308,21 +360,13 @@ class Column(RegisteredObject):
     unique: bool = False
     nullable: bool = True
     pkey: bool = False
+    db_path: str = None
+    default: t.Any = None
     _table: "Table" = None
 
-    def __post_init__(self):
-        if self.type_handler is None:
-            self.type_handler = DEFAULT_HANDLERS[self.python_type]
-
-    def sql(self):
-        blocks = [self.name, self.type_handler.sql_type]
-        if not self.nullable:
-            blocks.append("NOT NULL")
-        if self.unique:
-            blocks.append("UNIQUE")
-        if self.pkey:
-            blocks.append("PRIMARY KEY")
-        return " ".join(blocks)
+    @property
+    def db(self):
+        return Database(db_path=self.db_path)
 
     @property
     def table(self) -> "Table":
@@ -331,6 +375,22 @@ class Column(RegisteredObject):
     @table.setter
     def table(self, table: "Table") -> None:
         self._table = table
+
+    @property
+    def default_sig(self):
+        try:
+            return signature(self.default)
+        except TypeError as e:
+            if "is not a callable object" in str(e):
+                return None
+            else:
+                raise e
+
+    def default_sql(self):
+        if self.default is None or self.default_sig:
+            return ""
+        if not callable(self.default):
+            return f"DEFAULT {ds_quote(self.default)}"
 
     @property
     def identifier(self):
@@ -344,6 +404,20 @@ class Column(RegisteredObject):
 
     def cast(self):
         return ".".join(f"[{s.strip('][')}]" for s in self.identifier.split("."))
+
+    def sql(self):
+        blocks = [
+            self.name,
+            TypeMaster.get(self.python_type).sql_type,
+            self.default_sql(),
+        ]
+        if not self.nullable:
+            blocks.append("NOT NULL")
+        if self.unique:
+            blocks.append("UNIQUE")
+        if self.pkey:
+            blocks.append("PRIMARY KEY")
+        return " ".join(blocks)
 
 
 @dataclasses.dataclass
@@ -369,6 +443,7 @@ class Table(RegisteredObject):
     name: str = None
     constraints: t.List = dataclasses.field(default_factory=list)
     schema: str = "Main"
+    _caster: TableCaster = None
 
     def __post_init__(self):
         for c in self.column:
@@ -390,35 +465,84 @@ class Table(RegisteredObject):
         )
 
     @property
+    def caster(self) -> TableCaster:
+        if self._caster is None:
+            self._caster = TableCaster(self)
+        return self._caster
+
+    @property
     def identifier(self):
         if self.schema:
             return self.schema + "." + self.name
         else:
             return self.name
 
-    def __repr__(self):
-        return f"{self.identifier}({joinmap(self.column)})"
+    def data_prep(self, data: t.Dict) -> t.Dict:
+        """Returns a dictionary ready for use in values statment.
+        Column order ensures multiple value rows have the same order.
+        Adds default values for missing items where column.default_sig.
+        Applies quoting rules to values to make them SQL ready
+        """
+        result = dict()
+        for c in self.column:
+            value = data.get(c.name)
+            if value is None:
+                sig = c.default_sig
+                if sig is not None:
+                    if sig.parameters.get("data"):
+                        value = c.default(data=data)
+                    else:
+                        value = c.default()
+            if value is not None:
+                result[c.name] = ds_quote(value)
+        return result
+
+    def header_values(self, data: t.Union[t.Dict, t.List] = None) -> t.Tuple[str, str]:
+        if data is None:
+            return "", "DEFAULT VALUES"
+        data_list = [
+            self.data_prep(d) for d in (data if isinstance(data, list) else [data])
+        ]
+        header = f"({', '.join(data_list[0].keys())})"
+        values = (
+            f"""VALUES {", ".join([f"({', '.join(d.values())})" for d in data_list])}"""
+        )
+        return header, values
+
+    def insert(self, data: t.Dict, replace: bool = False) -> Statement:
+        s = Statement()
+        s.components[
+            Statement.Order.INSERT
+        ] = f"{'REPLACE' if replace else 'INSERT'} INTO {self.identifier}"
+        (
+            s.components[Statement.Order.INSERT_COLUMNS],
+            s.components[Statement.Order.VALUES],
+        ) = self.header_values(data)
+        return s
 
     def select(self, where: t.Dict = None, columns: t.List = None) -> Statement:
-        return f"""SELECT {joinmap(columns if columns else self.column, ds_qname)} \n FROM {self.name} \n {ds_sql(ds_where(where))}"""
-
-    def insert(self, data: t.Dict, replace: bool = False):
-        k = data.keys()
-        return (
-            f"""{"REPLACE" if replace else "INSERT"} INTO {self.name} ({joinmap(k)}) VALUES({joinmap(k, lambda x: f":{x}")});""",
-            data,
+        return Statement(
+            components={
+                Statement.Order.SELECT: "SELECT ",
+                Statement.Order.SELECT_COLUMNS: joinmap(
+                    columns if columns else self.column, ds_qname
+                ),
+                Statement.Order.FROM: f"FROM {self.identifier}",
+                Statement.Order.WHERE: ds_where(where),
+            }
         )
 
-    def delete(self, where: t.Dict) -> None:
-        return (
-            f"""DELETE FROM {self.name} \n {ds_where(where).sql()}""",
-            where,
+    def delete(self, where: t.Dict) -> Statement:
+        return Statement(
+            components={
+                Statement.Order.DELETE: "DELETE",
+                Statement.Order.FROM: f"FROM {self.identifier}",
+                Statement.Order.WHERE: ds_where(where),
+            }
         )
 
-    class CreateTableType(Enum):
-        CREATE = 1
-        COLUMN = 2
-        CONSTRAINT = 3
+    def __repr__(self):
+        return f"{self.identifier}({joinmap(self.column)})"
 
 
 # SECTION 5: Database
@@ -479,20 +603,29 @@ class Database:
         del self.connection_pool[self.db_path]
 
     def query(
-        self, table: t.Union["Table", str], where: t.Dict = None, columns: t.List = None
+        self,
+        table: t.Union["Table", str],
+        where: t.Dict = None,
+        columns: t.List = None,
+        cast_values: bool = True,
     ) -> t.List:
+        if isinstance(table, str):
+            table = self.table(table)
         with Cursor(_db=self) as cur:
-            sql = self.table(table).select(where=where, columns=columns)
+            sql = table.select(where=where, columns=columns)
             result = cur.execute(sql)
+        if cast_values:
+            return table.caster.cast_values(result)
         return result
 
     def create(self, table: t.Union["Table", str], data: t.Dict, replace=False) -> None:
         with Cursor(_db=self) as cur:
-            cur.execute(*self.table(table).insert(data=data, replace=replace))
+            stmt = self.table(table).insert(data=data, replace=replace)
+            cur.execute(command=stmt)
 
     def delete(self, table: t.Union["Table", str], where: t.Dict) -> None:
         with Cursor(_db=self) as cur:
-            cur.execute(*self.table(table).delete(where=where))
+            cur.execute(self.table(table).delete(where=where))
 
     def init_db(self):
         """ Create basic db objects. """
@@ -535,6 +668,8 @@ class Cursor:
         commit: bool = True,
     ):
         """ Execute a sql command with optional parameters """
+        if isinstance(command, Statement):
+            command = ds_sql(command)
         if parameters:
             self._cursor.execute(command, parameters)
         else:

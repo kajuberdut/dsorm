@@ -1,7 +1,18 @@
 import uuid
 
 import pytest
-from dsorm import *
+from dsorm import (
+    Column,
+    Cursor,
+    Database,
+    ForeignKey,
+    Pragma,
+    Statement,
+    Table,
+    Where,
+    ds_name,
+    joinmap,
+)
 
 
 @pytest.fixture(scope="session")
@@ -63,7 +74,7 @@ def test_schema(table_setup):
 
 
 def test_table_fkey(table_setup):
-    t = Table(
+    Table(
         name="dependant",
         column=[Column(name="SomeColumn"), Column(name="test_id")],
         constraints=[table_setup.fkey()],
@@ -107,10 +118,12 @@ def test_pragma():
 
 
 def test_statement():
-    t = Statement.StatementOrder
     s = Statement(
-        statement_type=t,
-        components={t: "SELECT 1 as thing", t.WHERE: "WHERE 1=1"},
+        components={
+            Statement.Order.SELECT: "SELECT",
+            Statement.Order.SELECT_COLUMNS: "1 as thing",
+            Statement.Order.WHERE: "WHERE 1=1",
+        },
     )
     assert s.sql is not None
 
