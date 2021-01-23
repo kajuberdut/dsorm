@@ -226,6 +226,8 @@ It's darned simple.
 
 ### Further Examples
 * [Custom Type Handling & Column Defaults](https://github.com/kajuberdut/dsorm/blob/main/examples/CustomTypeHandlerAndDefault.py)
+* [Advanced WHERE clauses](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedWhere.py)
+
 
 <!-- ROADMAP -->
 ## Roadmap

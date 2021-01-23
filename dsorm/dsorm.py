@@ -324,7 +324,9 @@ class Where(DSObject):
     equal = eq = functools.partialmethod(get_comparison, operator="=")
     not_equal = ne = functools.partialmethod(get_comparison, operator="!=")
     greater_than = gt = functools.partialmethod(get_comparison, operator=">")
+    greater_than_or_equal = gtoe = functools.partialmethod(get_comparison, operator=">=")
     less_than = lt = functools.partialmethod(get_comparison, operator="<")
+    less_than_or_equal = ltoe = functools.partialmethod(get_comparison, operator="<=")
     like = functools.partialmethod(get_comparison, operator="LIKE")
 
     @dataclasses.dataclass
