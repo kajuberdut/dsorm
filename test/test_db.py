@@ -135,8 +135,7 @@ def test_pragma():
 def test_statement():
     s = Statement(
         components={
-            Statement.Order.SELECT: "SELECT",
-            Statement.Order.SELECT_COLUMNS: "1 as thing",
+            Statement.Order.SELECT: "SELECT 1 as thing",
             Statement.Order.WHERE: "WHERE 1=1",
         },
     )

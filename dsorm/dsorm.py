@@ -242,9 +242,11 @@ def post_connect(run_once=True):  # pragma: no cover
 # SECTION 4: SQL Component Classes
 @dataclasses.dataclass
 class Statement(DSObject):
-    """An object representing a sql statement and optional values."""
+    """An object representing a sql statement."""
 
-    components: t.Dict[Enum, str] = dataclasses.field(default_factory=dict)
+    components: t.Dict["Statement.Order", SQLFragment] = dataclasses.field(
+        default_factory=dict
+    )
     _db: "Database" = None
 
     class Order(Enum):
@@ -252,19 +254,17 @@ class Statement(DSObject):
         UPDATE = 2
         SET = 3
         INSERT = 4
-        INSERT_COLUMNS = 5
-        SELECT = 6
-        SELECT_COLUMNS = 7
-        DELETE = 8
-        FROM = 9
-        JOIN = 10
-        VALUES = 11
-        WHERE = 12
-        GROUP = 13
-        HAVING = 14
-        ORDER = 15
-        LIMIT = 16
-        OFFSET = 17
+        SELECT = 5
+        DELETE = 6
+        FROM = 7
+        JOIN = 8
+        VALUES = 9
+        WHERE = 10
+        GROUP = 11
+        HAVING = 12
+        ORDER = 13
+        LIMIT = 14
+        OFFSET = 15
 
     def sql(self) -> str:
         return "\n".join(
@@ -274,6 +274,16 @@ class Statement(DSObject):
                 if clause in self.components
             ]
         )
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            key = Statement.order(key)
+        return self.components[key]
+
+    def __setitem__(self, key, value):
+        if not isinstance(key, Statement.Order):
+            raise ValueError("Statement Keys must be Statement.Order")
+        self.components[key] = value
 
 
 @dataclasses.dataclass
@@ -324,7 +334,9 @@ class Where(DSObject):
     equal = eq = functools.partialmethod(get_comparison, operator="=")
     not_equal = ne = functools.partialmethod(get_comparison, operator="!=")
     greater_than = gt = functools.partialmethod(get_comparison, operator=">")
-    greater_than_or_equal = gtoe = functools.partialmethod(get_comparison, operator=">=")
+    greater_than_or_equal = gtoe = functools.partialmethod(
+        get_comparison, operator=">="
+    )
     less_than = lt = functools.partialmethod(get_comparison, operator="<")
     less_than_or_equal = ltoe = functools.partialmethod(get_comparison, operator="<=")
     like = functools.partialmethod(get_comparison, operator="LIKE")
@@ -506,36 +518,28 @@ class Table(RegisteredObject):
                 result[c.name] = ds_quote(value)
         return result
 
-    def header_values(self, data: t.Union[t.Dict, t.List] = None) -> t.Tuple[str, str]:
-        if data is None:
-            return "", "DEFAULT VALUES"
-        data_list = [
-            self.data_prep(d) for d in (data if isinstance(data, list) else [data])
-        ]
-        header = f"({', '.join(data_list[0].keys())})"
-        values = (
-            f"""VALUES {", ".join([f"({', '.join(d.values())})" for d in data_list])}"""
-        )
-        return header, values
-
     def insert(self, data: t.Dict, replace: bool = False) -> Statement:
         s = Statement()
-        s.components[
-            Statement.Order.INSERT
-        ] = f"{'REPLACE' if replace else 'INSERT'} INTO {self.identifier}"
-        (
-            s.components[Statement.Order.INSERT_COLUMNS],
-            s.components[Statement.Order.VALUES],
-        ) = self.header_values(data)
+        if data is None:
+            s[Statement.Order.INSERT] = f"INSERT INTO {self.identifier} DEFAULT VALUES"
+            return s
+        else:
+            data_list = [
+                self.data_prep(d) for d in (data if isinstance(data, list) else [data])
+            ]
+            s[
+                Statement.Order.INSERT
+            ] = f"{'REPLACE' if replace else 'INSERT'} INTO {self.identifier} ({', '.join(data_list[0].keys())})"
+            s[
+                Statement.Order.VALUES
+            ] = f"""VALUES {", ".join([f"({', '.join(d.values())})" for d in data_list])}"""
         return s
 
     def select(self, where: t.Dict = None, columns: t.List = None) -> Statement:
         return Statement(
             components={
-                Statement.Order.SELECT: "SELECT ",
-                Statement.Order.SELECT_COLUMNS: joinmap(
-                    columns if columns else self.column, ds_qname
-                ),
+                Statement.Order.SELECT: "SELECT "
+                + joinmap(columns if columns else self.column, ds_qname),
                 Statement.Order.FROM: f"FROM {self.identifier}",
                 Statement.Order.WHERE: ds_where(where),
             }

@@ -168,6 +168,8 @@ It's darned simple.
 ### Further Examples
 * [Custom Type Handling & Column Defaults](https://github.com/kajuberdut/dsorm/blob/main/examples/CustomTypeHandlerAndDefault.py)
 * [Advanced WHERE clauses](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedWhere.py)
+* [Configuration](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedConfiguration.py)
+* [Statements](https://github.com/kajuberdut/dsorm/blob/main/examples/Statements.py)
 
 
 <!-- ROADMAP -->
