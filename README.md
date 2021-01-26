@@ -85,8 +85,8 @@ Darned Simple ORM (dsORM) is a little bit different from other ORMs.
 The typical ORM approach is to have developers "map" their classes to a database and then do "magic" to make that database work.
 dsORM aims instead to map database components into easy to use Python objects which an be leveraged by your classes for database interactions.
 
-If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is simple, the entire functional code is in a single file which is currently under 1000 lines.
-For comparison, PeeWee, a fairly small ORM is 7723 lines long in it's main file and that doesn't contain all of it's functional code.
+If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is simple, the entire functional code is in a single file which is currently under 1,000 lines.
+For comparison, PeeWee, a fairly small ORM is 7,723 lines long in it's main file and that doesn't contain all of it's functional code.
 SQLAlchemy as of this writing contains 343,975 lines of Python code (though admittedly it dwarfs dsORM's feature set.)
 
 
