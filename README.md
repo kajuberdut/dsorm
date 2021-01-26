@@ -33,22 +33,13 @@
 <br />
 <p align="center">
   <a href="https://github.com/kajuberdut/dsorm">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
+    <img src="https://github.com/kajuberdut/dsorm/blob/main/images/logo.png?raw=true" alt="Logo" width="80" height="80">
   </a>
 
   <h3 align="center">Darned Simple ORM</h3>
 
   <p align="center">
     A single file ORM for SQLite in Python
-    <br />
-    <!-- <a href="https://github.com/kajuberdut/dsorm"><strong>Explore the docs »</strong></a> -->
-    <br />
-    <br />
-    <!-- <a href="https://github.com/kajuberdut/dsorm">View Demo</a> -->
-    <!-- · -->
-    <a href="https://github.com/kajuberdut/dsorm/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/kajuberdut/dsorm/issues">Request Feature</a>
   </p>
 </p>
 
@@ -83,7 +74,7 @@
 
 Darned Simple ORM (dsORM) is a little bit different from other ORMs.
 The typical ORM approach is to have developers "map" their classes to a database and then do "magic" to make that database work.
-dsORM aims instead to map database components into easy to use Python objects which an be leveraged by your classes for database interactions.
+dsORM aims instead to map database components into easy to use Python objects which can be leveraged by your classes for database interactions.
 
 If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is simple, the entire functional code is in a single file which is currently under 1,000 lines.
 For comparison, PeeWee, a fairly small ORM is 7,723 lines long in it's main file and that doesn't contain all of it's functional code.
@@ -117,7 +108,7 @@ To get a local copy up and running follow these simple steps.
 ### Installing with pip
 
   ```sh
-  pip install git+https://github.com/kajuberdut/dsorm.git
+  pip install dsorm
   ```
 
 For information about cloning and dev setup see: [Contributing](#Contributing)

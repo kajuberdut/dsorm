@@ -1,4 +1,3 @@
-import os
 import pathlib
 
 from setuptools import find_packages, setup
@@ -11,7 +10,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name="dsorm",
-    version="0.0.4",
+    version="0.0.6",
     author="Patrick Shechet",
     author_email="patrick.shechet@gmail.com",
     description=("A Darned Simple ORM"),
