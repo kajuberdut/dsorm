@@ -81,9 +81,13 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-Darned Simple ORM (dsORM) is designed to be a minimal (single file,) approach to mapping SQL tables to Python Objects.
+Darned Simple ORM (dsORM) is a little bit different from other ORMs.
+The typical ORM approach is to have developers "map" their classes to a database and then do "magic" to make that database work.
+dsORM aims instead to map database components into easy to use Python objects which an be leveraged by your classes for database interactions.
 
-It provides a management class for the database(s) connections / cursors and tables (for creation, select, insert/update or delete.)
+If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is simple, the entire functional code is in a single file which is currently under 1000 lines.
+For comparison, PeeWee, a fairly small ORM is 7723 lines long in it's main file and that doesn't contain all of it's functional code.
+SQLAlchemy as of this writing contains 343,975 lines of Python code (though admittedly it dwarfs dsORM's feature set.)
 
 
 ### Designed for easy integration / modification
@@ -129,7 +133,7 @@ from dsorm import Column, Database, Table, Where
 Person = Table(
     name="person",
     column=[
-        Column("id", python_type=int, pkey=True),
+        Column.id(),  # This is shorthand for Column("id", int, pkey=True)
         Column("first_name", nullable=False),
         Column("last_name", nullable=False),
     ],
@@ -170,6 +174,7 @@ print([r["id"] for r in db.query("person")])
 It's darned simple.
 
 ### Further Examples
+* [A Practical Example](https://github.com/kajuberdut/dsorm/blob/main/examples/PracticalExample.py)
 * [Custom Type Handling & Column Defaults](https://github.com/kajuberdut/dsorm/blob/main/examples/CustomTypeHandlerAndDefault.py)
 * [Advanced WHERE clauses](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedWhere.py)
 * [Configuration](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedConfiguration.py)

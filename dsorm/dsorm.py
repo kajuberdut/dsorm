@@ -36,6 +36,10 @@ class TypeHandler:
         """ This method should handle converting a SQLite datatype to a Python datatype. """
         return value
 
+    @classmethod
+    def register(cls):
+        TypeMaster.register(cls)
+
 
 class StrHandler(TypeHandler):
     sql_type: str = "TEXT"
@@ -384,6 +388,10 @@ class Column(RegisteredObject):
     db_path: str = None
     default: t.Any = None
     _table: "Table" = None
+
+    @classmethod
+    def id(cls):
+        return cls(name="id", python_type=int, pkey=True)
 
     @property
     def db(self):

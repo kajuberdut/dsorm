@@ -3,7 +3,7 @@ from dsorm import Column, Database, Table, Where
 Person = Table(
     name="person",
     column=[
-        Column("id", python_type=int, pkey=True),
+        Column.id(),  # This is shorthand for Column("id", int, pkey=True)
         Column("first_name", nullable=False),
         Column("last_name", nullable=False),
     ],

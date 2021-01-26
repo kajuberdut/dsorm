@@ -7,7 +7,7 @@ It also includes an additional example of custom type handling
 from enum import IntEnum
 from random import randint
 
-from dsorm import Column, Database, TypeHandler, Table, TypeMaster, Where
+from dsorm import Column, Database, TypeHandler, Table, Where
 
 
 class Gender(IntEnum):
@@ -28,7 +28,7 @@ class GenderHandler(TypeHandler):
         return str(int(value))
 
 
-TypeMaster.register(GenderHandler)
+GenderHandler.register()
 
 person = Table(
     name="Person",

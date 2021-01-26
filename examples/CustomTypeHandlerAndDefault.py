@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from dsorm import Column, Database, Table, TypeHandler, TypeMaster
+from dsorm import Column, Database, Table, TypeHandler
 
 
 # Subclass TypeHandler to handle any python type
@@ -23,8 +23,9 @@ class UUIDHandler(TypeHandler):
         return UUID(value)
 
 
-# Custom type handlers must be registered with TypeMaster
-TypeMaster.register(UUIDHandler)
+# Custom type handlers must be registered before use.
+# This classmethod is inherited from TypeHandler
+UUIDHandler.register()
 
 
 def DefaultUUID(data):
@@ -50,5 +51,5 @@ Database.default_db = ":memory:"
 db = Database()
 db.init_db()
 
-db.create("person", data={"first_name": "John", "last_name": "Doe"})
+db.insert("person", data={"first_name": "John", "last_name": "Doe"})
 print(db.query("person"))
