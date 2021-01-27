@@ -4,6 +4,7 @@ See the other examples for more details.
 """
 
 import dataclasses
+import typing as t
 from hashlib import md5
 
 from dsorm import Column, Database, Table, post_connect, pre_connect
@@ -20,11 +21,15 @@ def build(db):
     db.init_db()
 
 
+def set_hash(data: t.Dict) -> str:
+    return md5(data["text"].encode("utf-8")).hexdigest()
+
+
 book_table = Table(
     name="book",
     column=[
-        Column("hash", unique=True, pkey=True),
-        Column("name", str),
+        Column("hash", unique=True, pkey=True, default=set_hash),
+        Column("name", str, unique=True),
         Column("text", str),
     ],
 )
@@ -38,8 +43,6 @@ class Book:
     auto_save: dataclasses.InitVar = False
 
     def __post_init__(self, auto_save):
-        if self.hash is None:
-            self.hash = md5(self.text.encode("utf-8")).hexdigest()
         if auto_save:
             self.save()
 
@@ -72,6 +75,7 @@ if __name__ == "__main__":
     name = "The Worst Book in the World"
     Book(name=name, text=(name * 10000), auto_save=True)
 
+    # Meanwhile back at the bat cave
     b = Book.book_from_name(name)
 
     print(b.hash)

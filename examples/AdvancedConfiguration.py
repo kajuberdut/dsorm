@@ -36,12 +36,13 @@ def build(db):
     # Using this hook pushes instantiation to first connection
     db.init_db()
 
+
 # This pragma object will automatically be picked up by init_db and run.
-# Note that because the post_connect wrapper sets up the 'build' function 
-#   to run just after first connect we can create pragma after build.   
+# Note that because the post_connect wrapper sets up the 'build' function
+#   to run just after first connect we can create pragma after build.
 conf = Pragma(
     pragma={
-        "foreign_keys": 1, # Foreign key enforcement is off by default in SQLite
-        "temp_store": 2, # Don't copy this setting unless you know what it does
+        "foreign_keys": 1,  # Foreign key enforcement is off by default in SQLite
+        "temp_store": 2,  # Don't copy this setting unless you know what it does
     }
 )

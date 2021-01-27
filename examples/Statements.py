@@ -34,6 +34,6 @@ print(stmt.sql())
 
 with Cursor(":memory:") as cur:
     r = cur.execute(stmt) # dsORM.Cursor.execute accepts Statements
-    
+
 print(r)
 # [{'i': 1, 'r': 1948344763645089057}, {'i': 2, 'r': 6157987235773962892}...

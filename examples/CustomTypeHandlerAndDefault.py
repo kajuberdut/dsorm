@@ -28,7 +28,7 @@ class UUIDHandler(TypeHandler):
 UUIDHandler.register()
 
 
-def DefaultUUID(data):
+def default_uuid(data):
     print(
         "Because this function takes a name parmeter 'data' the row data is passed to it."
     )
@@ -39,7 +39,7 @@ def DefaultUUID(data):
 Person = Table(
     name="person",
     column=[
-        Column("id", python_type=UUID, pkey=True, default=DefaultUUID),
+        Column("id", python_type=UUID, pkey=True, default=default_uuid),
         Column("first_name", nullable=False),
         Column("last_name", nullable=False),
         Column("create_date", python_type=datetime, default=datetime.now),
