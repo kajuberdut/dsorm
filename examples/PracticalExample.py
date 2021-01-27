@@ -21,6 +21,8 @@ def build(db):
     db.init_db()
 
 
+# If the function set as a column default has a named parameter "data"
+# It will be passed the row data on insert
 def set_hash(data: t.Dict) -> str:
     return md5(data["text"].encode("utf-8")).hexdigest()
 

@@ -28,11 +28,9 @@ class UUIDHandler(TypeHandler):
 UUIDHandler.register()
 
 
-def default_uuid(data):
-    print(
-        "Because this function takes a name parmeter 'data' the row data is passed to it."
-    )
-    print(f"data: {data}")
+# For another example of a default function see:
+# https://github.com/kajuberdut/dsorm/blob/main/examples/PracticalExample.py
+def default_uuid():
     return uuid4()
 
 
