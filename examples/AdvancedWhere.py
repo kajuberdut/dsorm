@@ -7,7 +7,7 @@ It also includes an additional example of custom type handling
 from enum import IntEnum
 from random import randint
 
-from dsorm import Column, Database, TypeHandler, Table, Where
+from dsorm import Column, Database, Table, TypeHandler, Where
 
 
 class Gender(IntEnum):
@@ -39,29 +39,33 @@ person = Table(
     ],
 )
 
-Database.default_db = ":memory:"
-db = Database()
-db.init_db()
+Database(db_path=":memory:", is_default=True).init_db()
 
 data = [{"gender": Gender(randint(1, 2)), "age": randint(1, 99)} for i in range(10)]
 
 print(f"Example data: {data[0]}")
 # Example data: {'gender': <Gender.FEMALE: 1>, 'age': 75}
 
-db.insert(table="Person", data=data)
+person.insert(data=data).execute()
 
-# Let's use this as an example where we have different criteria groups
-# Male and 65 or older
-m = Where(where={"gender": Gender.MALE, "age": Where.greater_than_or_equal(target=65)})
-# Female and 67 or older
-f = Where(
-    where={"gender": Gender.FEMALE, "age": Where.greater_than_or_equal(target=67)}
-)
+# We'll make a select statement from this table next
+stmt = person.select()
+# This will have an empty dict in it's .where attribute
 
 # Any value in a where dictionary can contain another where clause
 # The sub-where will be nested in () automatically but you will need to
 #   set "OR", "AND" or "" in the key.
-complex_where = Where({"": f, "OR": m})  # Note that the first clause has an empty key
+
+print(stmt.where)
+
+# Let's use this as an example where we have different criteria groups
+stmt.where[""] = Where(  # Empty key since we don't want to start with "AND" or "OR"
+    where={"gender": Gender.MALE, "age": Where.greater_than_or_equal(target=65)}
+)
+# Since modern python dictionaries keep insert order we can just do these in order
+stmt.where["OR"] = Where(
+    where={"gender": Gender.FEMALE, "age": Where.greater_than_or_equal(target=67)}
+)
 
 # Example of a complex where clause:
 # WHERE ( gender = 1
@@ -71,9 +75,9 @@ complex_where = Where({"": f, "OR": m})  # Note that the first clause has an emp
 #         AND [age] >= 65
 #       )
 
-print(f"Example of a complex where clause: {complex_where.sql()}")
+print(f"Example of a complex where clause: {stmt.where.sql()}")
 
-results = db.query("Person", where=complex_where)
+results = stmt.execute()
 
 print(f"All male records age 65+ and all female records 67+:\n  {results}")
 # All male records age 65+ and all female records 67+:

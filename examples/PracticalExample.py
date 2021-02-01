@@ -7,18 +7,7 @@ import dataclasses
 import typing as t
 from hashlib import md5
 
-from dsorm import Column, Database, Table, post_connect, pre_connect
-
-
-# See Advanced Configuration:
-@pre_connect()
-def db_setup(db):
-    db.default_db = ":memory:"
-
-
-@post_connect()
-def build(db):
-    db.init_db()
+from dsorm import Column, Database, Table
 
 
 # If the function set as a column default has a named parameter "data"
@@ -50,10 +39,10 @@ class Book:
 
     @classmethod
     def book_from_name(cls, name):
-        return cls(**Database().query("book", where={"name": name})[0])
+        return cls(**book_table.select(where={"name": name}).execute()[0])
 
     def save(self):
-        Database().insert("book", data=dataclasses.asdict(self), replace=True)
+        book_table.insert(data=dataclasses.asdict(self), replace=True).execute()
 
     def __getitem__(self, key: slice) -> str:
         if not isinstance(key, slice):
@@ -67,13 +56,16 @@ class Book:
                 else f"substr(text, {key.start}, {key.stop - key.start})"
             )
         )
-        return Database().query("book", columns=[f"{c} AS text"])[0]["text"]
+        return book_table.select(column=[f"{c} AS text"]).execute()[0]["text"]
 
     def __repr__(self):
         return f"Book(name={self.name})"
 
 
 if __name__ == "__main__":
+    # See Advanced Configuration for how to defer these
+    Database(db_path=":memory:", is_default=True).init_db()
+
     name = "The Worst Book in the World"
     Book(name=name, text=(name * 10000), auto_save=True)
 

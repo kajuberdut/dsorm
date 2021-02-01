@@ -121,7 +121,7 @@ Here is an example showing basic usage.
 ```python
 from dsorm import Column, Database, Table, Where
 
-Person = Table(
+person = Table(
     name="person",
     column=[
         Column.id(),  # This is shorthand for Column("id", int, pkey=True)
@@ -130,35 +130,43 @@ Person = Table(
     ],
 )
 
-# Database instances can access any table with insert, query, or delete.
-Database.default_db = ":memory:"
-db = Database()
-db.init_db()  # This creates all tables
+# See Database example for more details about the Database object
+Database(db_path=":memory:", is_default=True).init_db()  # This creates all tables
 
-# Insert records
-db.insert(
-    table="person",
+
+# Tables haave insert, select, and delete methods.
+# These return a Statement
+stmt = person.insert(
     data=[
         {"first_name": "Jane", "last_name": "Doe"},
         {"first_name": "John", "last_name": "Doe"},
     ],
 )
 
-# Query returns a list of dicts of rows matching the where
-does = db.query(
-    "person",
+# Statements can be examined with .sql method
+print(stmt.sql())
+
+# INSERT INTO Main.person (first_name, last_name)
+# VALUES ('Jane', 'Doe'), ('John', 'Doe')
+
+# or executed with .execute()
+stmt.execute()
+
+# select returns a list of dicts of rows matching the where
+does = person.select(
     where={"first_name": Where.like(target="J%n%")},
-    columns=[
+    column=[
         "id",
         "first_name || ' ' || last_name AS full_name",  # Note that the columns can be sql
     ],
-)
+).execute()
+
 print(does)
 # [{"id": 1, "full_name": "John Doe"}, {"id": 2, "full_name": "Jane Doe"}]
 
 # And Delete
-db.delete("person", where={"id": does[0]["id"]})
-print([r["id"] for r in db.query("person")])
+person.delete(where={"id": does[0]["id"]}).execute()
+print([r["id"] for r in person.select().execute()])
 # [2]
 ```
 
@@ -169,7 +177,7 @@ It's darned simple.
 * [Custom Type Handling & Column Defaults](https://github.com/kajuberdut/dsorm/blob/main/examples/CustomTypeHandlerAndDefault.py)
 * [Advanced WHERE clauses](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedWhere.py)
 * [Configuration](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedConfiguration.py)
-* [Statements](https://github.com/kajuberdut/dsorm/blob/main/examples/Statements.py)
+<!-- * [Statements](https://github.com/kajuberdut/dsorm/blob/main/examples/Statements.py) -->
 
 
 <!-- ROADMAP -->

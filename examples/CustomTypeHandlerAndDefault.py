@@ -34,7 +34,7 @@ def default_uuid():
     return uuid4()
 
 
-Person = Table(
+person = Table(
     name="person",
     column=[
         Column("id", python_type=UUID, pkey=True, default=default_uuid),
@@ -44,10 +44,7 @@ Person = Table(
     ],
 )
 
+Database(db_path=":memory:", is_default=True).init_db()
 
-Database.default_db = ":memory:"
-db = Database()
-db.init_db()
-
-db.insert("person", data={"first_name": "John", "last_name": "Doe"})
-print(db.query("person"))
+person.insert(data={"first_name": "John", "last_name": "Doe"}).execute()
+print(person.select().execute())
