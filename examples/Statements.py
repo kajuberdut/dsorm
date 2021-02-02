@@ -9,23 +9,42 @@ stmt = Statement()
 
 # The components of a statement are ordered by their Statement.Order value
 # So you can set them up in any order you like
-# The generic "Statement" only has 3 orders, BEFORE, STATEMENT, and AFTER
+# The generic "Statement" only has 3 orders, BEGINNING, STATEMENT, and AFTER
 # Here is a little bit of a contrived example showing composing those order
-stmt["STATEMENT"] = "SELECT i, r"
-stmt["AFTER"] = "FROM random_data"
-stmt["BEFORE"] = Statement(
+
+# Again, this is a contrived example
+# We can directly assign components using their Order values
+# Order is a subclass of Enum so (#) or ["name"] both work
+cte = Statement(
     components={
-        Statement.Order.BEFORE: "WITH RECURSIVE random_data AS (",
-        Statement.Order.STATEMENT: """SELECT 1 AS i, Random() AS r
-UNION ALL
-    SELECT i+1 as i, Random() as r
-    FROM random_data
-    WHERE i <= 5
-""",
-        Statement.Order.AFTER: ")",
+        Statement.Order(1): "WITH RECURSIVE random_data AS (",
+        Statement.Order(3): ")",
     }
 )
 
+# Also Statements have a __setitem__ to make setting components easy
+# Here we set the middle order item of cte to another statement
+# This is a recursive CTE
+cte[2] = Statement(
+    components={
+        Statement.Order.BEGINNING: "SELECT 1 AS i, Random() AS r",
+        Statement.Order.MIDDLE: "UNION ALL",
+        Statement.Order.END: """SELECT i+1 as i, Random() as r
+    FROM random_data
+    WHERE i <= 5
+""",
+    }
+)
+
+# The process order these are assigned in of course doesn't matter
+# So we'll write our select from the CTE
+stmt = Statement()
+stmt["MIDDLE"] = "SELECT i, r \n FROM random_data"
+
+# And then attach our cte from above
+stmt["BEGINNING"] = cte
+
+# Finally, to show that, insane as it is, this works:
 print(stmt.sql())
 # WITH RECURSIVE random_data AS (
 #     SELECT 1 AS i, Random() AS r

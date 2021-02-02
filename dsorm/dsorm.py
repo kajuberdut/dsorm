@@ -389,9 +389,9 @@ class Statement(SQL):
         self.components[key] = value
 
     class Order(Enum):
-        BEFORE = 1
-        STATEMENT = 2
-        AFTER = 3
+        BEGINNING = 1
+        MIDDLE = 2
+        END = 3
 
 
 @dataclasses.dataclass
