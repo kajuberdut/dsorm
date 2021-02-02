@@ -2,7 +2,6 @@
 D.S.O: Darned Simple ORM
 This module provides some abstractions of SQL concepts into Object Relation Mapping models.
 """
-import collections
 import dataclasses
 import functools
 import sqlite3
@@ -10,7 +9,6 @@ from sqlite3.dbapi2 import OperationalError
 import typing as t
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from collections.abc import Iterable
 from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
@@ -41,7 +39,7 @@ class Database:
         else:
             self._c = None
         if is_default and db_path is not None:
-            self.default_db = db_path
+            self.__class__._default_db = db_path
 
     def dict_factory(
         self, cursor: sqlite3.Cursor, row: sqlite3.Row
@@ -226,19 +224,6 @@ class TypeMaster:
         return self.type_handlers[key]
 
 
-class TableCaster:
-    def __init__(self, table: "Table"):
-        self.key_casters = {
-            c.name: TypeMaster.get(c.python_type).s2p for c in table.column
-        }
-
-    def cast(self, column_name: str, value: t.Any) -> t.Any:
-        return self.key_casters.get(column_name, lambda x: x)(value)
-
-    def cast_values(self, values: t.Union[t.List, t.Dict]) -> t.List:
-        return [{k: self.cast(k, v) for k, v in d.items()} for d in listify(values)]
-
-
 # SECTION 3: Utility functions
 LINE = "\n"
 TAB = "\t"
@@ -350,17 +335,18 @@ class Qname(SQL):
 
 @dataclasses.dataclass
 class PragmaBase:
-    setting: str = None
+    name: str = None
     value: str = None
 
 
+@dataclasses.dataclass
 class Pragma(PragmaBase, Registered, SQL):
     @classmethod
     def from_dict(cls, d: t.Dict) -> None:
-        [cls(setting=k, value=v) for k, v in d.items()]
+        [cls(name=k, value=v) for k, v in d.items()]
 
     def sql(self):
-        return f"PRAGMA {self.setting}={self.value}"
+        return f"PRAGMA {self.name}={self.value}"
 
 
 @dataclasses.dataclass
@@ -402,7 +388,7 @@ class Statement(SQL):
             raise ValueError(f"Keys must be {self.__class__.__name__}.Order")
         self.components[key] = value
 
-    class Order:
+    class Order(Enum):
         BEFORE = 1
         STATEMENT = 2
         AFTER = 3
@@ -493,6 +479,11 @@ class Insert(DBObject, Statement, TableObjectBase):
 class Select(Statement, DBObject, WhereObjectBase, TableObjectBase):
     column: t.List = None
 
+    def __post_init__(self):
+        self.key_casters = {
+            c.name: TypeMaster.get(c.python_type).s2p for c in self.column if hasattr(c, "name")
+        }
+
     def select_sql(self):
         self["SELECT"] = "SELECT"
 
@@ -500,6 +491,14 @@ class Select(Statement, DBObject, WhereObjectBase, TableObjectBase):
         self["COLUMN"] = joinmap(
             [c.identity if hasattr(c, "identity") else c for c in self.column], ds_sql
         )
+
+    def cast(self, column_name: str, value: t.Any) -> t.Any:
+        return self.key_casters.get(column_name, lambda x: x)(value)
+
+    def execute(self) -> t.Optional[t.List]:
+        return [
+            {k: self.cast(k, v) for k, v in d.items()} for d in self.db.execute(self)
+        ]
 
     class Order(Enum):
         CTE = 1

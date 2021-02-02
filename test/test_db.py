@@ -67,7 +67,7 @@ def test_column_repr():
 
 
 def test_foreign_key():
-    f = ForeignKey("test_column", "test", "id")
+    f = ForeignKey("test_column", table="test", column="id")
     print(f.sql())
     assert f.sql() == "FOREIGN KEY (test_column) REFERENCES test(id)"
     assert repr(f) == "FKEY test(id)"

@@ -16,7 +16,7 @@ You have seen in previous examples the Database().init_db() method that creates
     allows you to set SQLite3 runtime configurations called pragma.
 """
 
-from dsorm import Pragma, post_connect, pre_connect
+from dsorm import Database, Pragma, post_connect, pre_connect
 
 
 # The pre_connect wrapper let's you set a function that will be called before the first connection
@@ -40,9 +40,19 @@ def build(db):
 # This pragma object will automatically be picked up by init_db and run.
 # Note that because the post_connect wrapper sets up the 'build' function
 #   to run just after first connect we can create pragma after build.
-conf = Pragma(
-    pragma={
+conf = Pragma.from_dict(
+    {
         "foreign_keys": 1,  # Foreign key enforcement is off by default in SQLite
         "temp_store": 2,  # Don't copy this setting unless you know what it does
     }
 )
+
+
+db = Database()
+# It's unusual to directly call connect
+db.connect()  # here we use this to trigger the hooks from above
+
+print(f"Default db is now {db.default_db}")
+
+print(db.execute("PRAGMA foreign_keys"))
+print(db.execute("PRAGMA temp_store"))
