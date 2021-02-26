@@ -119,7 +119,7 @@ For information about cloning and dev setup see: [Contributing](#Contributing)
 Here is an example showing basic usage.
 
 ```python
-from dsorm import Column, Database, Table, Where
+from dsorm import ID_COLUMN, Column, Database, Table, Where
 
 person = Table(
     name="person",
@@ -130,11 +130,25 @@ person = Table(
     ],
 )
 
+print(person.sql())
+
+
+person2 = Table.from_dict(
+    "person",
+    {
+        "id": ID_COLUMN,
+        "first_name": {"nullable": False},
+        "last_name": {"nullable": False},
+    },
+)
+
+print(person2.sql())
+
 # See Database example for more details about the Database object
 Database(db_path=":memory:", is_default=True).init_db()  # This creates all tables
 
 
-# Tables haave insert, select, and delete methods.
+# Tables have insert, select, and delete methods.
 # These return a Statement
 stmt = person.insert(
     data=[

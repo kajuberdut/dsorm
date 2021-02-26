@@ -25,7 +25,7 @@ class GenderHandler(TypeHandler):
 
     @staticmethod
     def p2s(value) -> int:
-        return str(int(value))
+        return int(value)
 
 
 GenderHandler.register()

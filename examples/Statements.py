@@ -1,11 +1,13 @@
+""" Statements underly all select/insert/delete actions.
+    The normal use case is to access the methods of Table that generate statements.
+    However, it is possible to create or modify Statements easily.
+    The fundamental parts of a Statement are a dict Statement.components and
+    a class Statement.Order, a sub-class of Enum.
+    the components dict expects Statement.Order values to be used as keys. 
+
+"""
+
 from dsorm import Statement, Database
-
-# Statement is a core component of dsORM
-# Statements underly all select/insert/delete actions
-# You don't need to directly manipulate statements
-# But you certainly can
-
-stmt = Statement()
 
 # The components of a statement are ordered by their Statement.Order value
 # So you can set them up in any order you like

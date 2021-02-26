@@ -19,7 +19,7 @@ from inspect import getattr_static, signature
 class Database:
 
     connection_pool: t.Dict[str, sqlite3.Connection] = dict()
-    _default_db: str = None
+    _default_db: t.Optional[str] = None
     information_schema: t.Dict = defaultdict(dict)
     pre_connect_hook: t.Callable = lambda x: x
     post_connect_hook: t.Callable = lambda x: x
@@ -52,9 +52,13 @@ class Database:
             self.db_path = self.default_db
         self._c = self.connection_pool.get(self.db_path)
         if self._c is None:
-            self.connection_pool[self.db_path] = sqlite3.connect(self.db_path)
-            self._c = self.connection_pool[self.db_path]
-            self._c.row_factory = self.dict_factory
+            try:
+                self.connection_pool[self.db_path] = sqlite3.connect(self.db_path)
+                self._c = self.connection_pool[self.db_path]
+                self._c.row_factory = self.dict_factory
+            except TypeError as e:
+                print(f"Connection failed for path: {self.db_path}")
+                raise
         self.post_connect_hook()
 
     @property
@@ -65,6 +69,7 @@ class Database:
 
     def close(self):
         self.c.close()
+        self._c = None
         del self.connection_pool[self.db_path]
 
     def init_db(self):
@@ -97,10 +102,9 @@ class Database:
                 cur.execute(
                     *[i for i in [ds_sql(command), parameters] if i is not None]
                 )
-            except OperationalError as e:
-                raise OperationalError(
-                    f"Syntax error in: {ds_sql(command)}\n\nError: {str(e)}"
-                )
+            except (OperationalError, ValueError) as e:
+                print(f"Syntax error in: {ds_sql(command)}\n\nError: {str(e)}")
+                raise
             if commit:
                 self.commit()
             return cur.fetchall()
@@ -228,6 +232,7 @@ class TypeMaster:
 LINE = "\n"
 TAB = "\t"
 ComparisonOperator = t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
+ID_COLUMN = {"python_type": int, "pkey": True}
 
 
 def resolve(o: t.Any, attrs: t.List = []):
@@ -342,8 +347,8 @@ class PragmaBase:
 @dataclasses.dataclass
 class Pragma(PragmaBase, Registered, SQL):
     @classmethod
-    def from_dict(cls, d: t.Dict) -> None:
-        [cls(name=k, value=v) for k, v in d.items()]
+    def from_dict(cls, d: t.Dict) -> t.List["Pragma"]:
+        return [cls(name=k, value=v) for k, v in d.items()]
 
     def sql(self):
         return f"PRAGMA {self.name}={self.value}"
@@ -412,8 +417,8 @@ class WhereObjectBase:
 
 @dataclasses.dataclass
 class Insert(DBObject, Statement, TableObjectBase):
-    data: t.Dict = dataclasses.field(default_factory=dict)
-    _prepared_data: t.Dict = None
+    data: t.Union[t.Dict, t.List] = dataclasses.field(default_factory=dict)
+    _prepared_data: t.Optional[t.Dict] = None
     replace: bool = False
     column: t.List = dataclasses.field(default_factory=list)
     _column: t.List = dataclasses.field(init=False, repr=False)
@@ -446,7 +451,7 @@ class Insert(DBObject, Statement, TableObjectBase):
                     else:
                         value = c.default()
             if value is not None:
-                result[c.name] = TypeMaster.cast(value)
+                result[c.name] = str(TypeMaster.cast(value))
         return result
 
     def insert_sql(self):
@@ -456,16 +461,16 @@ class Insert(DBObject, Statement, TableObjectBase):
         return self.table.identity
 
     def column_sql(self):
-        d = self.prepared_data()
-        if d is None:
+        if self.data is None or (d := self.prepared_data()) is None:
             self["COLUMN"] = "DEFAULT VALUES"
         else:
             self["COLUMN"] = f"({', '.join(d[0].keys())})"
 
     def values_sql(self):
-        self[
-            "VALUES"
-        ] = f"""VALUES {", ".join([f"({', '.join(d.values())})" for d in self.prepared_data()])}"""
+        if self.data is not None:
+            self[
+                "VALUES"
+            ] = f"""VALUES {", ".join([f"({', '.join(d.values())})" for d in self.prepared_data()])}"""
 
     class Order(Enum):
         INSERT = 1
@@ -481,7 +486,9 @@ class Select(Statement, DBObject, WhereObjectBase, TableObjectBase):
 
     def __post_init__(self):
         self.key_casters = {
-            c.name: TypeMaster.get(c.python_type).s2p for c in self.column if hasattr(c, "name")
+            c.name: TypeMaster.get(c.python_type).s2p
+            for c in self.column
+            if hasattr(c, "name")
         }
 
     def select_sql(self):
@@ -537,12 +544,19 @@ class Column(Statement, DBObject, ColumnBase):
     unique: bool = False
     nullable: bool = True
     pkey: bool = False
-    default: t.Any = None
-    table: "Table" = None
+    default: t.Any = dataclasses.field(hash=False, default=None)
+    table: t.Optional["Table"] = None
+
+    @classmethod
+    def from_tuple(cls, t: t.Tuple) -> "Column":
+        name, detail = t
+        if isinstance(detail, type):
+            return cls(name=name, python_type=detail)
+        return cls(**{"name": name, **detail})
 
     @classmethod
     def id(cls):
-        return cls(name="id", python_type=int, pkey=True)
+        return cls.from_tuple(("id", ID_COLUMN))
 
     @property
     def component_seperator(self):
@@ -605,15 +619,11 @@ class ForeignKeyBase:
 @dataclasses.dataclass
 class ForeignKey(Statement, ForeignKeyBase):
     def foreignkey_sql(self):
-        self["FOREIGNKEY"] = f"FOREIGN KEY ({joinmap(listify(self.column))})"
+        self["FOREIGNKEY"] = f"FOREIGN KEY ({joinmap(self.column)})"
 
     def references_sql(self):
-        table_name = (
-            self.table.identity.sql() if isinstance(self.table, Table) else self.table
-        )
-        self[
-            "REFERENCES"
-        ] = f"REFERENCES {table_name}({joinmap(self.reference_column)})"
+        table_name = listify(self.reference)[0].table.identity.sql()
+        self["REFERENCES"] = f"REFERENCES {table_name}({joinmap(self.reference)})"
 
     class Order(Enum):
         FOREIGNKEY = 1
@@ -629,6 +639,10 @@ class TableBase:
 class Table(Statement, Registered, TableBase):
     constraints: t.List = dataclasses.field(default_factory=list)
     schema: str = None
+
+    @classmethod
+    def from_dict(cls, name: str, d: t.Dict) -> "Table":
+        return cls(name=name, column=[Column.from_tuple(i) for i in d.items()])
 
     def __post_init__(self):
         for c in self.column:
@@ -660,7 +674,7 @@ class Table(Statement, Registered, TableBase):
         return Qname([self.schema, self.name])
 
     def insert(
-        self, data: t.Dict, column: t.List = None, replace: bool = False
+        self, data: t.Union[t.Dict, t.List], column: t.List = None, replace: bool = False
     ) -> Statement:
         return Insert(
             data=data,

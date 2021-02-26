@@ -10,7 +10,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name="dsorm",
-    version="0.0.6",
+    version="0.0.7",
     author="Patrick Shechet",
     author_email="patrick.shechet@gmail.com",
     description=("A Darned Simple ORM"),
