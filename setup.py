@@ -8,6 +8,7 @@ HERE = pathlib.Path(__file__).parent
 # The text of the README file
 README = (HERE / "README.md").read_text()
 
+
 setup(
     name="dsorm",
     version="0.0.7",
@@ -18,6 +19,7 @@ setup(
     packages=find_packages(),
     long_description=README,
     long_description_content_type="text/markdown",
+    url="https://github.com/kajuberdut/dsorm",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "License :: OSI Approved :: BSD License",

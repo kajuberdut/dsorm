@@ -2,10 +2,10 @@
 D.S.O: Darned Simple ORM
 This module provides some abstractions of SQL concepts into Object Relation Mapping models.
 """
+
 import dataclasses
 import functools
 import sqlite3
-from sqlite3.dbapi2 import OperationalError
 import typing as t
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
 from inspect import getattr_static, signature
+from sqlite3.dbapi2 import OperationalError
 
 
 # SECTION 1: Database
@@ -50,19 +51,19 @@ class Database:
         self.pre_connect_hook()
         if self.db_path is None and self.default_db is not None:
             self.db_path = self.default_db
-        self._c = self.connection_pool.get(self.db_path)
+        self._c = self.connection_pool.get(self.db_path)  # type: ignore
         if self._c is None:
             try:
-                self.connection_pool[self.db_path] = sqlite3.connect(self.db_path)
-                self._c = self.connection_pool[self.db_path]
+                self.connection_pool[self.db_path] = sqlite3.connect(self.db_path)  # type: ignore
+                self._c = self.connection_pool[self.db_path]  # type: ignore
                 self._c.row_factory = self.dict_factory
-            except TypeError as e:
+            except TypeError:
                 print(f"Connection failed for path: {self.db_path}")
                 raise
         self.post_connect_hook()
 
     @property
-    def c(self) -> sqlite3.Connection:
+    def c(self) -> t.Union[sqlite3.Connection, None]:
         if self._c is None:
             self.connect()
         return self._c
@@ -70,7 +71,8 @@ class Database:
     def close(self):
         self.c.close()
         self._c = None
-        del self.connection_pool[self.db_path]
+        if self.db_path:
+            del self.connection_pool[self.db_path]
 
     def init_db(self):
         """ Create basic db objects. """
@@ -92,7 +94,7 @@ class Database:
 
     def execute(
         self,
-        command: str,
+        command: t.Union[str, "SQL"],
         parameters: t.Union[t.Tuple, t.Dict] = None,
         commit: bool = True,
     ):
@@ -111,7 +113,7 @@ class Database:
 
 
 # SECTION 2: Type handlers
-class TypeHandlerABC(metaclass=ABCMeta):
+class TypeHandlerABC(metaclass=ABCMeta):  # pragma: no cover
     @property
     @abstractmethod
     def sql_type(self):
@@ -126,21 +128,23 @@ class TypeHandlerABC(metaclass=ABCMeta):
     @abstractmethod
     def p2s(value) -> t.Union[int, float, str, bytes]:
         """ This method should return a value that would be valid "as is" in a sql statement. """
-        pass
+        raise NotImplementedError("Not implemented yet.")
 
     @staticmethod
     @abstractmethod
     def s2p(value) -> t.Any:
         """ This method should handle converting a SQLite datatype to a Python datatype. """
-        pass
+        raise NotImplementedError("Not implemented yet.")
 
 
 class TypeHandler(TypeHandlerABC):
     @classmethod
     def register(cls):
-        if isinstance(getattr_static(cls, "p2s"), staticmethod) and isinstance(
-            getattr_static(cls, "s2p"), staticmethod
-        ):
+        if (
+            isinstance(getattr_static(cls, "p2s"), staticmethod)
+            and isinstance(getattr_static(cls, "s2p"), staticmethod)
+            and len(cls.__abstractmethods__) == 0
+        ):  # type: ignore
             TypeMaster.register(cls)
         else:
             raise TypeError("Type Handlers must have static methods s2p and p2s.")
@@ -205,7 +209,7 @@ class DateHandler(TypeHandler):
 
 
 class TypeMaster:
-    type_handlers = {
+    type_handlers: t.Dict[t.Type, t.Type[TypeHandler]] = {
         str: StrHandler,
         int: IntHandler,
         float: FloatHandler,
@@ -213,8 +217,8 @@ class TypeMaster:
     }
 
     @classmethod
-    def register(cls, handler: TypeHandler) -> None:
-        cls.type_handlers[handler.python_type] = handler
+    def register(cls, handler: t.Type[TypeHandler]) -> None:
+        cls.type_handlers[handler.python_type] = handler  # type: ignore
 
     @classmethod
     def get(cls, python_type: type) -> t.Callable:
@@ -224,7 +228,7 @@ class TypeMaster:
     def cast(cls, o) -> str:
         return cls.get(type(o)).p2s(o)
 
-    def __getitem__(self, key: type) -> TypeHandler:
+    def __getitem__(self, key: type) -> t.Type[TypeHandler]:
         return self.type_handlers[key]
 
 
@@ -289,8 +293,8 @@ class TBD:
 
 @dataclasses.dataclass
 class DBObject:
-    db_path: str = None
-    _db: "Database" = dataclasses.field(repr=False, default=None)
+    db_path: t.Optional[str] = None
+    _db: t.Optional["Database"] = dataclasses.field(repr=False, default=None)
 
     @property
     def db(self):
@@ -303,12 +307,13 @@ class DBObject:
         self._db = db
 
     def execute(self) -> t.Optional[t.List]:
-        return self.db.execute(self)
+        if isinstance(self, SQL):
+            return self.db.execute(self)
 
 
 @dataclasses.dataclass
 class Registered(DBObject):
-    name: str = None
+    name: t.Optional[str] = None
 
     def __post_init__(self):
         if self.name is None:
@@ -316,7 +321,7 @@ class Registered(DBObject):
         self.db.information_schema[type(self).__name__][self.name] = self
 
 
-class SQL(metaclass=ABCMeta):
+class SQL(metaclass=ABCMeta):  # pragma: no cover
     @abstractmethod
     def sql(self):
         pass
@@ -340,8 +345,8 @@ class Qname(SQL):
 
 @dataclasses.dataclass
 class PragmaBase:
-    name: str = None
-    value: str = None
+    name: t.Optional[str] = None
+    value: t.Optional[str] = None
 
 
 @dataclasses.dataclass
@@ -400,27 +405,27 @@ class Statement(SQL):
 
 
 @dataclasses.dataclass
-class TableObjectBase:
-    table: "Table"
+class TableObjectBase(Statement):
+    table: t.Optional["Table"] = None
 
     def from_sql(self):
         self["FROM"] = f"FROM {self.table.identity.sql()}"
 
 
 @dataclasses.dataclass
-class WhereObjectBase:
-    where: "Where" = dataclasses.field(default_factory=dict)
+class WhereObjectBase(Statement):
+    where: t.Union["Where", t.Dict] = dataclasses.field(default_factory=dict)
 
     def where_sql(self):
         self["WHERE"] = self.where if hasattr(self.where, "sql") else Where(self.where)
 
 
 @dataclasses.dataclass
-class Insert(DBObject, Statement, TableObjectBase):
-    data: t.Union[t.Dict, t.List] = dataclasses.field(default_factory=dict)
-    _prepared_data: t.Optional[t.Dict] = None
+class Insert(DBObject, TableObjectBase):
+    data: t.Optional[t.Union[t.Dict, t.List]] = dataclasses.field(default_factory=dict)
+    _prepared_data: t.Optional[t.List] = None
     replace: bool = False
-    column: t.List = dataclasses.field(default_factory=list)
+    column: t.List = dataclasses.field(default_factory=list)  # type: ignore
     _column: t.List = dataclasses.field(init=False, repr=False)
 
     @property
@@ -481,8 +486,8 @@ class Insert(DBObject, Statement, TableObjectBase):
 
 
 @dataclasses.dataclass
-class Select(Statement, DBObject, WhereObjectBase, TableObjectBase):
-    column: t.List = None
+class Select(DBObject, WhereObjectBase, TableObjectBase):
+    column: t.Optional[t.List] = None
 
     def __post_init__(self):
         self.key_casters = {
@@ -523,7 +528,7 @@ class Select(Statement, DBObject, WhereObjectBase, TableObjectBase):
 
 
 @dataclasses.dataclass
-class Delete(Statement, DBObject, WhereObjectBase, TableObjectBase):
+class Delete(DBObject, WhereObjectBase, TableObjectBase):
     def delete_sql(self):
         self["DELETE"] = "DELETE"
 
@@ -535,7 +540,7 @@ class Delete(Statement, DBObject, WhereObjectBase, TableObjectBase):
 
 @dataclasses.dataclass
 class ColumnBase:
-    name: str = None
+    name: t.Optional[str] = None
 
 
 @dataclasses.dataclass
@@ -573,8 +578,16 @@ class Column(Statement, DBObject, ColumnBase):
                 raise e
 
     @property
+    def table_identity(self):
+        return (
+            self.table.identity
+            if hasattr(self.table, "identity")
+            else Qname(parts=[self.table])
+        )
+
+    @property
     def identity(self):
-        return (self.table.identity if self.table else Qname()) + Qname([self.name])
+        return self.table_identity + Qname([self.name])
 
     def name_sql(self):
         return self.name
@@ -612,8 +625,8 @@ class Column(Statement, DBObject, ColumnBase):
 
 @dataclasses.dataclass
 class ForeignKeyBase:
-    column: t.List[Column]
-    reference: t.List[Column]
+    column: t.Union[t.List[Column], Column]
+    reference: t.Union[t.List[Column], Column]
 
 
 @dataclasses.dataclass
@@ -638,7 +651,7 @@ class TableBase:
 @dataclasses.dataclass
 class Table(Statement, Registered, TableBase):
     constraints: t.List = dataclasses.field(default_factory=list)
-    schema: str = None
+    schema: t.Optional[str] = None
 
     @classmethod
     def from_dict(cls, name: str, d: t.Dict) -> "Table":
@@ -663,18 +676,21 @@ class Table(Statement, Registered, TableBase):
     def pkey(self) -> t.List:
         return [c for c in self.column if c.pkey]
 
-    def fkey(self, on_column: Column = None) -> ForeignKey:
+    def fkey(
+        self, on_column: t.Union[t.List[Column], Column, None] = None
+    ) -> ForeignKey:
         primary = self.pkey()
-        if on_column is None:
-            on_column = primary
-        return ForeignKey(column=on_column, table=self, reference_column=primary)
+        return ForeignKey(column=on_column, reference=primary)
 
     @property
     def identity(self):
         return Qname([self.schema, self.name])
 
     def insert(
-        self, data: t.Union[t.Dict, t.List], column: t.List = None, replace: bool = False
+        self,
+        data: t.Optional[t.Union[t.Dict, t.List]],
+        column: t.List = None,
+        replace: bool = False,
     ) -> Statement:
         return Insert(
             data=data,
@@ -706,7 +722,7 @@ class Table(Statement, Registered, TableBase):
 
 @dataclasses.dataclass
 class Where(SQL):
-    where: dict = dataclasses.field(default_factory=dict)
+    where: t.Union["Where", t.Dict] = dataclasses.field(default_factory=dict)
     keyword: str = "WHERE"
 
     def __getitem__(self, key):
@@ -726,16 +742,19 @@ class Where(SQL):
                 extras.append(f"{LINE + k} ({v.sql() + LINE})")
             else:
                 if isinstance(v, (str, int, float)):
-                    v = self.get_comparison(column=k, target=v)
+                    v = self.get_comparison(column=k, target=v)  # type: ignore
                 if hasattr(v, "column") and v.column == TBD:
                     v.column = Column(name=k)
                 clause_list.append(v)
         return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=LINE + TAB + "AND")}{joinmap(extras, seperator=LINE)}"""
 
+    def items(self):
+        return self.where.items()
+
     @dataclasses.dataclass
     class Comparison:
-        column: Statement
-        target: Statement
+        column: t.Union[Statement, str, t.Type[TBD]]
+        target: t.Union[Statement, str, t.Type[TBD]]
         operator: ComparisonOperator
 
         def sql(self):
@@ -746,7 +765,7 @@ class Where(SQL):
     @classmethod
     def get_comparison(
         cls,
-        column: Statement = TBD,
+        column: t.Union[Statement, t.Type[TBD]] = TBD,
         target: Statement = None,
         operator: ComparisonOperator = "=",
     ) -> "Where.Comparison":
@@ -766,8 +785,8 @@ class Where(SQL):
 
     @dataclasses.dataclass
     class In(Statement):
-        column: Statement = TBD
-        target: Statement = TBD
+        column: t.Union[Statement, t.Type[TBD]] = TBD
+        target: t.Union[Statement, t.Type[TBD]] = TBD
         invert: bool = False
 
         def sql(self):
@@ -776,7 +795,7 @@ class Where(SQL):
     @classmethod
     def is_in(
         cls,
-        column: Statement = TBD,
+        column: t.Union[Statement, t.Type[TBD]] = TBD,
         target: Statement = None,
         invert: bool = False,
     ) -> "Where.In":

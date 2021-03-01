@@ -106,3 +106,4 @@ config.json
 #Log
 log.txt
 */times/*.json
+cov.xml
