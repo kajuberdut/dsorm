@@ -3,7 +3,7 @@ from dsorm import Column, ForeignKey, Table, ds_name
 
 def test_name(table_setup):
     result = ds_name(table_setup)
-    assert result.name == "test"
+    assert result == "test"
 
 
 def test_column_repr():
@@ -32,7 +32,7 @@ def test_foreign_key():
     print(f.sql())
     assert (
         f.sql()
-        == "FOREIGN KEY ([footable].[id])\nREFERENCES [bartable]([bartable].[fooid])"
+        == "FOREIGN KEY (id)\nREFERENCES [bartable](fooid)"
     )
 
 
@@ -62,9 +62,10 @@ def test_table_fkey():
     )
     assert (
         book.fkey(on_column=(Column(name="bob", table=BobsTable))).sql()
-        == """FOREIGN KEY ([BobsTable].[bob])\nREFERENCES [some_table]([some_table].[id])"""
+        == "FOREIGN KEY (bob)\nREFERENCES [some_table](id)"
     )
+    print(BobsTable.constraint_sql())
     assert (
         BobsTable.constraint_sql()
-        == "FOREIGN KEY ([BobsTable].[bob])\nREFERENCES [some_table]([some_table].[id])"
+        == ",FOREIGN KEY (bob)\nREFERENCES [some_table](id)"
     )

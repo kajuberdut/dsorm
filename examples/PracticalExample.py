@@ -7,7 +7,7 @@ import dataclasses
 import typing as t
 from hashlib import md5
 
-from dsorm import Column, Database, Table
+from dsorm import Column, Database, Table, RawSQL
 
 
 # If the function set as a column default has a named parameter "data"
@@ -51,12 +51,12 @@ class Book:
             "text"
             if key.start is None
             else (
-                f"substr(text, {key.start})"
+                RawSQL(f"substr(text, {key.start}) AS text")
                 if key.stop is None
-                else f"substr(text, {key.start}, {key.stop - key.start})"
+                else RawSQL(f"substr(text, {key.start}, {key.stop - key.start}) AS text")
             )
         )
-        return book_table.select(column=[f"{c} AS text"]).execute()[0]["text"]
+        return book_table.select(column=[c]).execute()[0]["text"]
 
     def __repr__(self):
         return f"Book(name={self.name})"

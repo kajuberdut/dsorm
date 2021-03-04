@@ -14,6 +14,7 @@ from datetime import datetime
 from enum import Enum
 from inspect import getattr_static, signature
 from sqlite3.dbapi2 import OperationalError
+import re
 
 
 # SECTION 1: Database
@@ -63,7 +64,7 @@ class Database:
         self.post_connect_hook()
 
     @property
-    def c(self) -> t.Union[sqlite3.Connection, None]:
+    def c(self) -> t.Optional[sqlite3.Connection]:
         if self._c is None:
             self.connect()
         return self._c
@@ -143,7 +144,7 @@ class TypeHandler(TypeHandlerABC):
         if (
             isinstance(getattr_static(cls, "p2s"), staticmethod)
             and isinstance(getattr_static(cls, "s2p"), staticmethod)
-            and len(cls.__abstractmethods__) == 0
+            and len(cls.__abstractmethods__) == 0  # type: ignore
         ):  # type: ignore
             TypeMaster.register(cls)
         else:
@@ -237,12 +238,32 @@ LINE = "\n"
 TAB = "\t"
 ComparisonOperator = t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
 ID_COLUMN = {"python_type": int, "pkey": True}
+WhereLike = t.Union["Where", t.Dict]
+ColumnLike = t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"]
+
+
+def columnify(a: ColumnLike) -> ColumnLike:
+    if isinstance(a, str):
+        split = [p for p in re.split(r"\s", a) if p.lower() != "as"]
+        if len(split) > 1:
+            alias = split.pop()
+        else:
+            alias = None
+        return Qname(
+            parts=[re.sub(r"[\[\]]", "", p) for p in re.split(r"\.", split[0])],
+            alias=alias,
+        )
+    return a
 
 
 def resolve(o: t.Any, attrs: t.List = []):
     for a in attrs:
         try:
-            return getattr(o, a)()
+            attr = getattr(o, a)
+            if callable(attr):
+                return attr()
+            else:
+                return attr
         except AttributeError:
             pass
         except TypeError as e:
@@ -252,11 +273,11 @@ def resolve(o: t.Any, attrs: t.List = []):
 
 
 ds_name = functools.partial(resolve, attrs=["name"])
-ds_qname = functools.partial(resolve, attrs=["identity"])
+ds_identity = functools.partial(resolve, attrs=["identity"])
 ds_sql = functools.partial(resolve, attrs=["sql"])
 
 
-def ds_where(where: t.Union["Where", t.Dict]) -> "Where":
+def ds_where(where: WhereLike) -> "Where":
     return where if isinstance(where, Where) else Where(where)
 
 
@@ -328,19 +349,45 @@ class SQL(metaclass=ABCMeta):  # pragma: no cover
 
 
 @dataclasses.dataclass
+class RawSQL(SQL):
+    text: str
+
+    def sql(self) -> str:
+        return self.text
+
+    __repr__ = sql
+    __identity__ = sql
+
+
+@dataclasses.dataclass
 class Qname(SQL):
     parts: t.List = dataclasses.field(default_factory=list)
+    python_type: type = str
+    alias: t.Optional[str] = None
 
     def __add__(self, added):
         self.parts.extend(added.parts)
         return self
 
     def sql(self):
-        return ".".join([f"[{i}]" for i in self.parts if i is not None])
+        ident = ".".join([f"[{i}]" for i in self.parts if i is not None])
+        if self.alias is not None:
+            ident += f" AS {self.alias}"
+        return ident
+
+    __repr__ = sql
+    __identity__ = sql
+
+    def __hash__(self):
+        return hash((*self.parts, self.alias))
 
     @property
     def name(self):
         return self.parts[-1]
+
+    @property
+    def table(self):
+        return self.parts[-2]
 
 
 @dataclasses.dataclass
@@ -414,7 +461,7 @@ class TableObjectBase(Statement):
 
 @dataclasses.dataclass
 class WhereObjectBase(Statement):
-    where: t.Union["Where", t.Dict] = dataclasses.field(default_factory=dict)
+    where: WhereLike = dataclasses.field(default_factory=dict)
 
     def where_sql(self):
         self["WHERE"] = self.where if hasattr(self.where, "sql") else Where(self.where)
@@ -487,11 +534,12 @@ class Insert(DBObject, TableObjectBase):
 
 @dataclasses.dataclass
 class Select(DBObject, WhereObjectBase, TableObjectBase):
-    column: t.Optional[t.List] = None
+    column: t.Optional[t.List[ColumnLike]] = None
 
     def __post_init__(self):
+        self.column = [columnify(c) for c in self.column]
         self.key_casters = {
-            c.name: TypeMaster.get(c.python_type).s2p
+            c.name: TypeMaster.get(c.python_type).s2p  # type: ignore
             for c in self.column
             if hasattr(c, "name")
         }
@@ -500,9 +548,7 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
         self["SELECT"] = "SELECT"
 
     def column_sql(self):
-        self["COLUMN"] = joinmap(
-            [c.identity if hasattr(c, "identity") else c for c in self.column], ds_sql
-        )
+        self["COLUMN"] = joinmap([ds_identity(c) for c in self.column], ds_sql)
 
     def cast(self, column_name: str, value: t.Any) -> t.Any:
         return self.key_casters.get(column_name, lambda x: x)(value)
@@ -511,6 +557,9 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
         return [
             {k: self.cast(k, v) for k, v in d.items()} for d in self.db.execute(self)
         ]
+
+    def add_column(self, column: t.Union[t.List, str, "Column"]) -> None:
+        [self.column.append(columnify(c)) for c in listify(column)]
 
     class Order(Enum):
         CTE = 1
@@ -551,6 +600,9 @@ class Column(Statement, DBObject, ColumnBase):
     pkey: bool = False
     default: t.Any = dataclasses.field(hash=False, default=None)
     table: t.Optional["Table"] = None
+
+    def __hash__(self):
+        return hash((self.table, self.name))
 
     @classmethod
     def from_tuple(cls, t: t.Tuple) -> "Column":
@@ -625,8 +677,8 @@ class Column(Statement, DBObject, ColumnBase):
 
 @dataclasses.dataclass
 class ForeignKeyBase:
-    column: t.Union[t.List[Column], Column]
-    reference: t.Union[t.List[Column], Column]
+    column: t.Union[t.List[ColumnLike], ColumnLike]
+    reference: t.Union[t.List[ColumnLike], ColumnLike]
 
 
 @dataclasses.dataclass
@@ -635,7 +687,7 @@ class ForeignKey(Statement, ForeignKeyBase):
         self["FOREIGNKEY"] = f"FOREIGN KEY ({joinmap(self.column)})"
 
     def references_sql(self):
-        table_name = listify(self.reference)[0].table.identity.sql()
+        table_name = ds_sql(ds_identity(listify(self.reference)[0].table))
         self["REFERENCES"] = f"REFERENCES {table_name}({joinmap(self.reference)})"
 
     class Order(Enum):
@@ -652,6 +704,9 @@ class TableBase:
 class Table(Statement, Registered, TableBase):
     constraints: t.List = dataclasses.field(default_factory=list)
     schema: t.Optional[str] = None
+
+    def __hash__(self):
+        return hash((self.schema, self.name))
 
     @classmethod
     def from_dict(cls, name: str, d: t.Dict) -> "Table":
@@ -671,13 +726,13 @@ class Table(Statement, Registered, TableBase):
         return f"{joinmap(self.column, ds_sql)}"
 
     def constraint_sql(self):
-        return f"{joinmap(self.constraints, ds_sql)}"
+        return f"{',' if len(self.constraints) > 0 else ''}{joinmap(self.constraints, ds_sql)}"
 
     def pkey(self) -> t.List:
         return [c for c in self.column if c.pkey]
 
     def fkey(
-        self, on_column: t.Union[t.List[Column], Column, None] = None
+        self, on_column: t.Union[t.List[ColumnLike], Column, None] = None
     ) -> ForeignKey:
         primary = self.pkey()
         return ForeignKey(column=on_column, reference=primary)
@@ -691,7 +746,7 @@ class Table(Statement, Registered, TableBase):
         data: t.Optional[t.Union[t.Dict, t.List]],
         column: t.List = None,
         replace: bool = False,
-    ) -> Statement:
+    ) -> Insert:
         return Insert(
             data=data,
             column=column if column else self.column,
@@ -699,30 +754,33 @@ class Table(Statement, Registered, TableBase):
             table=self,
         )
 
-    def select(self, where: "Where" = None, column: t.List = None) -> Statement:
+    def select(self, where: WhereLike = None, column: t.List = None) -> Select:
         return Select(
             where=where if where is not None else Where(),
             column=column if column else self.column,
             table=self,
         )
 
-    def delete(self, where: t.Dict) -> Statement:
+    def delete(self, where: WhereLike) -> Delete:
         return Delete(table=self, where=where)
 
     def __repr__(self):
         return self.identity.sql()
 
+    def __getitem__(self, key):
+        return [c for c in self.column if c.name == key][0]
+
     class Order(Enum):
         CREATE = 1
         OPARENTHESIS = 2
         COLUMN = 3
-        CONSTRAINTS = 4
+        CONSTRAINT = 4
         CPARENTHESIS = 5
 
 
 @dataclasses.dataclass
 class Where(SQL):
-    where: t.Union["Where", t.Dict] = dataclasses.field(default_factory=dict)
+    where: WhereLike = dataclasses.field(default_factory=dict)
     keyword: str = "WHERE"
 
     def __getitem__(self, key):
@@ -739,39 +797,41 @@ class Where(SQL):
         for k, v in self.where.items():
             if isinstance(v, Where):
                 v.keyword = ""
-                extras.append(f"{LINE + k} ({v.sql() + LINE})")
+                extras.append(f"{LINE + k} ({ds_sql(v) + LINE})")
             else:
                 if isinstance(v, (str, int, float)):
                     v = self.get_comparison(column=k, target=v)  # type: ignore
                 if hasattr(v, "column") and v.column == TBD:
                     v.column = Column(name=k)
                 clause_list.append(v)
-        return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=LINE + TAB + "AND")}{joinmap(extras, seperator=LINE)}"""
+        return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=LINE + TAB + "AND ")}{joinmap(extras, seperator=LINE)}"""
 
     def items(self):
         return self.where.items()
 
     @dataclasses.dataclass
     class Comparison:
-        column: t.Union[Statement, str, t.Type[TBD]]
+        column: t.Union[ColumnLike, t.Type[TBD]]
         target: t.Union[Statement, str, t.Type[TBD]]
         operator: ComparisonOperator
 
         def sql(self):
             if self.column == TBD:
                 raise TypeError("Column argument is required")
-            return f"{ds_qname(self.column)} {self.operator} {TypeMaster.cast(self.target)}"
+            return f"{ds_identity(self.column).sql()} {self.operator} {TypeMaster.cast(self.target)}"
 
     @classmethod
     def get_comparison(
         cls,
-        column: t.Union[Statement, t.Type[TBD]] = TBD,
+        column: ColumnLike = TBD,
         target: Statement = None,
         operator: ComparisonOperator = "=",
     ) -> "Where.Comparison":
         if target is None:
             raise TypeError("target argument is required")
-        return cls.Comparison(column=column, target=target, operator=operator)
+        return cls.Comparison(
+            column=columnify(column), target=target, operator=operator
+        )
 
     equal = eq = functools.partialmethod(get_comparison, operator="=")
     not_equal = ne = functools.partialmethod(get_comparison, operator="!=")
@@ -790,7 +850,7 @@ class Where(SQL):
         invert: bool = False
 
         def sql(self):
-            return f"""{ds_qname(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.target, TypeMaster.cast)})"""
+            return f"""{ds_identity(self.column)} {"NOT" if self.invert else ""} IN ({joinmap(self.target, TypeMaster.cast)})"""
 
     @classmethod
     def is_in(

@@ -1,3 +1,4 @@
+from dsorm.dsorm import Qname
 import pytest
 from dsorm import Where, ds_where
 
@@ -46,5 +47,13 @@ def test_where_construction():
 
 
 def test_nested_where():
-    w = Where(where={1: 1, "or": Where({1: 2})})
-    assert w.sql() == "WHERE 1 = 1\nor ( 1 = 2\n)"
+
+    AUTHOR_NAME = "JK Rowling"
+    BOOK_NAME = "Harry Potter"
+    column_a = Qname(parts=["book", "name"])
+    column_b = Qname(parts=["author", "name"])
+    w = Where(where={column_a: BOOK_NAME, "or": Where({column_b: AUTHOR_NAME})})
+    assert (
+        w.sql()
+        == f"WHERE [book].[name] = '{BOOK_NAME}'\nor ( [author].[name] = '{AUTHOR_NAME}'\n)"
+    )
