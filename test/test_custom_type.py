@@ -42,7 +42,7 @@ def test_custom_handler():
     assert TypeMaster()[NoneClass] == NoneMaker
 
     t = Table(
-        name="NoneTable", column=[Column(name="NoneColumn", python_type=NoneClass)]
+        table_name="NoneTable", column=[Column(column_name="NoneColumn", python_type=NoneClass)]
     )
 
     Database(db_path=":memory:", is_default=True).init_db()

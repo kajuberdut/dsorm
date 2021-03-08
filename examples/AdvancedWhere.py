@@ -31,11 +31,11 @@ class GenderHandler(TypeHandler):
 GenderHandler.register()
 
 person = Table(
-    name="Person",
+    table_name="Person",
     column=[
-        Column(name="person_id", python_type=int, pkey=True),
-        Column(name="gender", python_type=Gender),
-        Column(name="age", python_type=int),
+        Column(column_name="person_id", python_type=int, pkey=True),
+        Column(column_name="gender", python_type=Gender),
+        Column(column_name="age", python_type=int),
     ],
 )
 

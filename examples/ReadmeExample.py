@@ -1,11 +1,11 @@
 from dsorm import ID_COLUMN, Column, Database, Table, Where
 
 person = Table(
-    name="person",
+    table_name="person",
     column=[
         Column.id(),  # This is shorthand for Column("id", int, pkey=True)
-        Column("first_name", nullable=False),
-        Column("last_name", nullable=False),
+        Column(column_name="first_name", nullable=False),
+        Column(column_name="last_name", nullable=False),
     ],
 )
 

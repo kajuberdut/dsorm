@@ -51,10 +51,10 @@ def db(db_path):
 @pytest.fixture(scope="function")
 def table_setup(db):
     test_table = Table(
-        name="test",
+        table_name="test",
         column=[
-            Column("test_id", python_type=int, pkey=True),
-            Column("stuff", unique=True, nullable=False),
+            Column(column_name="test_id", python_type=int, pkey=True),
+            Column(column_name="stuff", unique=True, nullable=False),
         ],
         _db=db,
     )

@@ -17,11 +17,11 @@ def set_hash(data: t.Dict) -> str:
 
 
 book_table = Table(
-    name="book",
+    table_name="book",
     column=[
-        Column("hash", unique=True, pkey=True, default=set_hash),
-        Column("name", str, unique=True),
-        Column("text", str),
+        Column(column_name="hash", unique=True, pkey=True, default=set_hash),
+        Column(column_name="name", python_type=str, unique=True),
+        Column(column_name="text", python_type=str),
     ],
 )
 
@@ -30,7 +30,7 @@ book_table = Table(
 class Book:
     name: str
     text: str
-    hash: str = None
+    hash: t.Optional[str] = None
     auto_save: dataclasses.InitVar = False
 
     def __post_init__(self, auto_save):

@@ -1,4 +1,4 @@
-from dsorm.dsorm import Qname
+from dsorm.dsorm import columnify
 import pytest
 from dsorm import Where, ds_where
 
@@ -50,8 +50,8 @@ def test_nested_where():
 
     AUTHOR_NAME = "JK Rowling"
     BOOK_NAME = "Harry Potter"
-    column_a = Qname(parts=["book", "name"])
-    column_b = Qname(parts=["author", "name"])
+    column_a = columnify("book.name")
+    column_b = columnify("author.name")
     w = Where(where={column_a: BOOK_NAME, "or": Where({column_b: AUTHOR_NAME})})
     assert (
         w.sql()

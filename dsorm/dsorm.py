@@ -5,6 +5,7 @@ This module provides some abstractions of SQL concepts into Object Relation Mapp
 
 import dataclasses
 import functools
+import re
 import sqlite3
 import typing as t
 from abc import ABCMeta, abstractmethod
@@ -14,10 +15,23 @@ from datetime import datetime
 from enum import Enum
 from inspect import getattr_static, signature
 from sqlite3.dbapi2 import OperationalError
-import re
+
+from attr import has
+
+# SECTION 1: Types / Literals
+WhereLike = t.Union["Where", t.Dict]
+LINE: str = "\n"
+TAB = "\t"
+ID_COLUMN = {"python_type": int, "pkey": True}
+KW = {
+    "OPENPAREN": "(",
+    "CLOSEPAREN": ")",
+    "FOREIGNKEY": "FOREIGN KEY",
+    "REFERENCES": "REFERENCES",
+}
 
 
-# SECTION 1: Database
+# SECTION 2: Database
 class Database:
 
     connection_pool: t.Dict[str, sqlite3.Connection] = dict()
@@ -25,6 +39,22 @@ class Database:
     information_schema: t.Dict = defaultdict(dict)
     pre_connect_hook: t.Callable = lambda x: x
     post_connect_hook: t.Callable = lambda x: x
+
+    @classmethod
+    def from_dict(cls, d: t.Dict) -> "Database":
+        db = cls(db_path=d.get("db_path", ":memory:"))
+        tables = {
+            table_name: Table.from_dict(table_name=table_name, d=definition, db=db)
+            for table_name, definition in d.get("tables", {}).items()
+        }
+        for ct in d.get("constraints", {}).items():
+            ct = tuple([i for i in ct if isinstance(i, (Column, str, Qname, RawSQL))])
+            tables[resolve(columnify(ct[0]), "table_name")].add_constraint(
+                ForeignKey.from_tuple(ct)
+            )
+        db.init_db()
+        [tables[n].insert(d).execute() for n, d in d.get("data", {}).items()]
+        return db
 
     @property
     def default_db(self):
@@ -112,8 +142,14 @@ class Database:
                 self.commit()
             return cur.fetchall()
 
+    def table(self, name: str) -> "Table":
+        return self.information_schema["Table"][name]
 
-# SECTION 2: Type handlers
+    def register(self, object):
+        self.information_schema[type(object).__name__][object.name] = object
+
+
+# SECTION 3: Type handlers
 class TypeHandlerABC(metaclass=ABCMeta):  # pragma: no cover
     @property
     @abstractmethod
@@ -227,84 +263,12 @@ class TypeMaster:
 
     @classmethod
     def cast(cls, o) -> str:
+        if isinstance(o, Column):
+            return ds_sql(ds_identity(o))
         return cls.get(type(o)).p2s(o)
 
     def __getitem__(self, key: type) -> t.Type[TypeHandler]:
         return self.type_handlers[key]
-
-
-# SECTION 3: Utility functions
-LINE = "\n"
-TAB = "\t"
-ComparisonOperator = t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
-ID_COLUMN = {"python_type": int, "pkey": True}
-WhereLike = t.Union["Where", t.Dict]
-ColumnLike = t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"]
-
-
-def columnify(a: ColumnLike) -> ColumnLike:
-    if isinstance(a, str):
-        split = [p for p in re.split(r"\s", a) if p.lower() != "as"]
-        if len(split) > 1:
-            alias = split.pop()
-        else:
-            alias = None
-        return Qname(
-            parts=[re.sub(r"[\[\]]", "", p) for p in re.split(r"\.", split[0])],
-            alias=alias,
-        )
-    return a
-
-
-def resolve(o: t.Any, attrs: t.List = []):
-    for a in attrs:
-        try:
-            attr = getattr(o, a)
-            if callable(attr):
-                return attr()
-            else:
-                return attr
-        except AttributeError:
-            pass
-        except TypeError as e:
-            if "is not callable" in str(e):
-                pass
-    return o
-
-
-ds_name = functools.partial(resolve, attrs=["name"])
-ds_identity = functools.partial(resolve, attrs=["identity"])
-ds_sql = functools.partial(resolve, attrs=["sql"])
-
-
-def ds_where(where: WhereLike) -> "Where":
-    return where if isinstance(where, Where) else Where(where)
-
-
-def listify(o: t.Any):
-    return o if isinstance(o, list) else [o]
-
-
-def joinmap(o, f: t.Callable = ds_name, seperator: str = ", ") -> str:
-    """ Returns a seperated list of f(i) for i in o. """
-    return seperator.join([str(f(o)) for o in listify(o)])
-
-
-def hook_setter(run_once=True, attribute=""):  # pragma: no cover
-    def outer_wrapper(func):
-        @functools.wraps(func)
-        def f(*args):
-            func(args[0])
-            if run_once:
-                setattr(Database, attribute, lambda x: x)
-
-        setattr(Database, attribute, f)
-
-    return outer_wrapper
-
-
-pre_connect = functools.partial(hook_setter, attribute="pre_connect_hook")
-post_connect = functools.partial(hook_setter, attribute="post_connect_hook")
 
 
 # SECTION 4: SQL Component Classes
@@ -332,16 +296,6 @@ class DBObject:
             return self.db.execute(self)
 
 
-@dataclasses.dataclass
-class Registered(DBObject):
-    name: t.Optional[str] = None
-
-    def __post_init__(self):
-        if self.name is None:
-            raise ValueError("name must be set to register object")
-        self.db.information_schema[type(self).__name__][self.name] = self
-
-
 class SQL(metaclass=ABCMeta):  # pragma: no cover
     @abstractmethod
     def sql(self):
@@ -361,49 +315,68 @@ class RawSQL(SQL):
 
 @dataclasses.dataclass
 class Qname(SQL):
-    parts: t.List = dataclasses.field(default_factory=list)
-    python_type: type = str
+    db: t.Optional[str] = None
+    schema_name: t.Optional[str] = None
+    table_name: t.Optional[str] = None
+    column_name: t.Optional[str] = None
     alias: t.Optional[str] = None
+    python_type: type = str
 
     def __add__(self, added):
-        self.parts.extend(added.parts)
-        return self
+        return Qname(
+            **{
+                k: v
+                for k, v in list(dataclasses.asdict(self).items())
+                + list(dataclasses.asdict(added).items())
+                if v is not None
+            }
+        )
 
-    def sql(self):
-        ident = ".".join([f"[{i}]" for i in self.parts if i is not None])
-        if self.alias is not None:
-            ident += f" AS {self.alias}"
-        return ident
-
-    __repr__ = sql
-    __identity__ = sql
-
-    def __hash__(self):
-        return hash((*self.parts, self.alias))
+    @property
+    def parts(self):
+        return [
+            p
+            for p in [self.schema_name, self.table_name, self.column_name]
+            if p is not None
+        ]
 
     @property
     def name(self):
         return self.parts[-1]
 
-    @property
-    def table(self):
-        return self.parts[-2]
+    def sql(self):
+        ident = ".".join([f"[{i}]" for i in self.parts if i is not None])
+        if self.alias is not None:
+            ident += f" AS {self.alias}"
+        return ident if ident is not None else ""
+
+    __repr__ = sql
+    identity = sql
+
+    def __hash__(self):
+        return hash((*self.parts, self.alias))
 
 
 @dataclasses.dataclass
-class PragmaBase:
-    name: t.Optional[str] = None
+class Pragma(DBObject, SQL):
+    pragma_name: t.Optional[str] = None
     value: t.Optional[str] = None
 
-
-@dataclasses.dataclass
-class Pragma(PragmaBase, Registered, SQL):
     @classmethod
     def from_dict(cls, d: t.Dict) -> t.List["Pragma"]:
-        return [cls(name=k, value=v) for k, v in d.items()]
+        return [cls(pragma_name=k, value=v) for k, v in d.items()]
 
     def sql(self):
-        return f"PRAGMA {self.name}={self.value}"
+        return f"PRAGMA {self.pragma_name}={self.value}"
+
+    @property
+    def name(self):
+        return self.pragma_name
+
+    def __post_init__(self):
+        if self.pragma_name is None or self.value is None:
+            raise ValueError("pragma_name and value are required for Pragma instance.")
+        self.db.register(self)
 
 
 @dataclasses.dataclass
@@ -412,11 +385,13 @@ class Statement(SQL):
 
     @property
     def component_seperator(self):
-        return LINE
+        return " "
 
     def sql(self) -> str:
         for i in self.Order:
-            if self.components.get(i) is None:
+            if i.name.startswith("KW_"):
+                self.components[i] = KW[i.name.split("_")[1]]
+            elif self.components.get(i) is None:
                 try:
                     if (result := getattr(self, f"{i.name.lower()}_sql")()) is not None:
                         self[i] = result
@@ -431,16 +406,26 @@ class Statement(SQL):
             ]
         )
 
+    @functools.singledispatchmethod
+    def get_order(self, key):
+        return key
+
+    @get_order.register
+    def _(self, key: int) -> Enum:
+        return self.Order(key)
+
+    @get_order.register
+    def _(self, key: str) -> Enum:
+        return self.Order[key]
+
+    def ommit(self, key):
+        self[self.get_order(key)] = ""
+
     def __getitem__(self, key):
-        if isinstance(key, int):
-            key = self.Order(key)
-        return self.components[key]
+        return self.components[self.get_order(key)]
 
     def __setitem__(self, key, value):
-        if isinstance(key, int):
-            key = self.Order(key)
-        if isinstance(key, str):
-            key = self.Order[key]
+        key = self.get_order(key)
         if not isinstance(key, self.Order):
             raise ValueError(f"Keys must be {self.__class__.__name__}.Order")
         self.components[key] = value
@@ -456,7 +441,7 @@ class TableObjectBase(Statement):
     table: t.Optional["Table"] = None
 
     def from_sql(self):
-        self["FROM"] = f"FROM {self.table.identity.sql()}"
+        self["FROM"] = f"FROM {ds_sql(ds_identity(self.table))}"
 
 
 @dataclasses.dataclass
@@ -534,7 +519,7 @@ class Insert(DBObject, TableObjectBase):
 
 @dataclasses.dataclass
 class Select(DBObject, WhereObjectBase, TableObjectBase):
-    column: t.Optional[t.List[ColumnLike]] = None
+    column: t.Optional[t.List[t.Union["Column", "Qname", str, "RawSQL"]]] = None
 
     def __post_init__(self):
         self.column = [columnify(c) for c in self.column]
@@ -588,12 +573,8 @@ class Delete(DBObject, WhereObjectBase, TableObjectBase):
 
 
 @dataclasses.dataclass
-class ColumnBase:
-    name: t.Optional[str] = None
-
-
-@dataclasses.dataclass
-class Column(Statement, DBObject, ColumnBase):
+class Column(Statement, DBObject):
+    column_name: str = ""
     python_type: type = str
     unique: bool = False
     nullable: bool = True
@@ -601,23 +582,24 @@ class Column(Statement, DBObject, ColumnBase):
     default: t.Any = dataclasses.field(hash=False, default=None)
     table: t.Optional["Table"] = None
 
-    def __hash__(self):
-        return hash((self.table, self.name))
-
     @classmethod
     def from_tuple(cls, t: t.Tuple) -> "Column":
-        name, detail = t
+        column_name, detail = t
         if isinstance(detail, type):
-            return cls(name=name, python_type=detail)
-        return cls(**{"name": name, **detail})
+            return cls(column_name=column_name, python_type=detail)
+        return cls(**{"column_name": column_name, **detail})
 
     @classmethod
     def id(cls):
         return cls.from_tuple(("id", ID_COLUMN))
 
+    def __post_init__(self):
+        if not self.column_name:
+            raise ValueError("column_name is required for Column instance.")
+
     @property
-    def component_seperator(self):
-        return " "
+    def name(self):
+        return self.column_name
 
     @property
     def default_sig(self):
@@ -631,18 +613,22 @@ class Column(Statement, DBObject, ColumnBase):
 
     @property
     def table_identity(self):
-        return (
-            self.table.identity
-            if hasattr(self.table, "identity")
-            else Qname(parts=[self.table])
-        )
+        if self.table:
+            return (
+                self.table.identity
+                if hasattr(self.table, "identity")
+                else Qname(table_name=str(self.table))
+            )
 
     @property
     def identity(self):
-        return self.table_identity + Qname([self.name])
+        ident = Qname(column_name=self.column_name)
+        if (table_ident := self.table_identity) :
+            ident = table_ident + ident
+        return ident
 
-    def name_sql(self):
-        return self.name
+    def columnname_sql(self):
+        return self.column_name
 
     def type_sql(self):
         return TypeMaster.get(self.python_type).sql_type
@@ -663,8 +649,11 @@ class Column(Statement, DBObject, ColumnBase):
         if self.default is not None and not self.default_sig:
             return f"DEFAULT {TypeMaster.cast(self.default)}"
 
+    def __hash__(self):
+        return hash((self.table, self.column_name))
+
     class Order(Enum):
-        NAME = 1
+        COLUMNNAME = 1
         TYPE = 2
         NOTNULL = 3
         UNIQUE = 4
@@ -672,52 +661,74 @@ class Column(Statement, DBObject, ColumnBase):
         DEFAULT = 6
 
     def __repr__(self):
-        return self.identity.sql()
+        return ds_sql(ds_identity(self))
 
 
 @dataclasses.dataclass
-class ForeignKeyBase:
-    column: t.Union[t.List[ColumnLike], ColumnLike]
-    reference: t.Union[t.List[ColumnLike], ColumnLike]
-
-
-@dataclasses.dataclass
-class ForeignKey(Statement, ForeignKeyBase):
-    def foreignkey_sql(self):
-        self["FOREIGNKEY"] = f"FOREIGN KEY ({joinmap(self.column)})"
-
-    def references_sql(self):
-        table_name = ds_sql(ds_identity(listify(self.reference)[0].table))
-        self["REFERENCES"] = f"REFERENCES {table_name}({joinmap(self.reference)})"
-
-    class Order(Enum):
-        FOREIGNKEY = 1
-        REFERENCES = 2
-
-
-@dataclasses.dataclass
-class TableBase:
-    column: t.List
-
-
-@dataclasses.dataclass
-class Table(Statement, Registered, TableBase):
-    constraints: t.List = dataclasses.field(default_factory=list)
-    schema: t.Optional[str] = None
-
-    def __hash__(self):
-        return hash((self.schema, self.name))
+class ForeignKey(Statement):
+    column: t.Union[Column, Qname, str, RawSQL] = ""
+    reference: t.Union[Column, Qname, str, RawSQL] = ""
 
     @classmethod
-    def from_dict(cls, name: str, d: t.Dict) -> "Table":
-        return cls(name=name, column=[Column.from_tuple(i) for i in d.items()])
+    def from_tuple(
+        cls,
+        t: t.Tuple[
+            t.Union[Column, Qname, str, RawSQL], t.Union[Column, Qname, str, RawSQL]
+        ],
+    ) -> "ForeignKey":
+        return cls(column=t[0], reference=t[1])
+
+    def fkcolumn_sql(self):
+        self.column = columnify(self.column)
+        self["FKCOLUMN"] = resolve(self.column, ["name", "sql"])
+
+    def reftable_sql(self):
+        self.reference = columnify(self.reference)
+        self["REFTABLE"] = resolve(
+            resolve(self.reference, ["table"]), ["table_name", "name", "sql"]
+        )
+
+    def refcolumn_sql(self):
+        self.reference = columnify(self.reference)
+        return resolve(self.reference, ["column_name", "name", "sql"])
+
+    class Order(Enum):
+        KW_FOREIGNKEY = 1
+        KW_OPENPAREN_1 = 2
+        FKCOLUMN = 3
+        KW_CLOSEPAREN_1 = 4
+        KW_REFERENCES = 5
+        REFTABLE = 6
+        KW_OPENPAREN_2 = 7
+        REFCOLUMN = 8
+        KW_CLOSEPAREN_3 = 9
+
+
+@dataclasses.dataclass
+class Table(Statement, DBObject):
+    table_name: str = ""
+    column: t.List = dataclasses.field(default_factory=list)
+    constraints: t.List = dataclasses.field(default_factory=list)
+    schema_name: t.Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, table_name: str, d: t.Dict, db=None) -> "Table":
+        return cls(
+            table_name=table_name,
+            column=[Column.from_tuple(i) for i in d.items()],
+            _db=db,
+        )
+
+    @property
+    def name(self):
+        return self.table_name
 
     def __post_init__(self):
+        if not self.column or not self.table_name:
+            raise ValueError("table_name and column are required for Table instance.")
         for c in self.column:
             c.table = self
-        super().__post_init__()
-        self["OPARENTHESIS"] = "("
-        self["CPARENTHESIS"] = ")"
+        self.db.register(self)
 
     def create_sql(self):
         return f"CREATE TABLE IF NOT EXISTS {self.name}"
@@ -728,18 +739,27 @@ class Table(Statement, Registered, TableBase):
     def constraint_sql(self):
         return f"{',' if len(self.constraints) > 0 else ''}{joinmap(self.constraints, ds_sql)}"
 
-    def pkey(self) -> t.List:
-        return [c for c in self.column if c.pkey]
+    def pkey(self) -> Column:
+        return [c for c in self.column if c.pkey][0]
 
-    def fkey(
-        self, on_column: t.Union[t.List[ColumnLike], Column, None] = None
-    ) -> ForeignKey:
-        primary = self.pkey()
-        return ForeignKey(column=on_column, reference=primary)
+    def fkey(self, on_column: t.Union["Column", "Qname", str, "RawSQL"]) -> ForeignKey:
+        return ForeignKey(column=on_column, reference=self.pkey())
+
+    def add_constraint(self, const):
+        self.constraints.append(const)
+
+    def on_from_constraints(self, target: "Table") -> "On":
+        return On(
+            {
+                c.column: c.reference
+                for c in [c for c in self.constraints if c.reference.table == target]
+                + [c for c in target.constraints if c.reference.table == self]
+            }
+        )
 
     @property
     def identity(self):
-        return Qname([self.schema, self.name])
+        return Qname(schema_name=self.schema_name, table_name=self.name)
 
     def insert(
         self,
@@ -752,6 +772,7 @@ class Table(Statement, Registered, TableBase):
             column=column if column else self.column,
             replace=replace,
             table=self,
+            _db=self.db,
         )
 
     def select(self, where: WhereLike = None, column: t.List = None) -> Select:
@@ -759,23 +780,27 @@ class Table(Statement, Registered, TableBase):
             where=where if where is not None else Where(),
             column=column if column else self.column,
             table=self,
+            _db=self.db,
         )
 
     def delete(self, where: WhereLike) -> Delete:
-        return Delete(table=self, where=where)
+        return Delete(table=self, where=where, _db=self.db)
 
     def __repr__(self):
-        return self.identity.sql()
+        return ds_sql(ds_identity(self.identity))
 
     def __getitem__(self, key):
         return [c for c in self.column if c.name == key][0]
 
+    def __hash__(self):
+        return hash((self.schema_name, self.table_name))
+
     class Order(Enum):
         CREATE = 1
-        OPARENTHESIS = 2
+        KW_OPENPAREN = 2
         COLUMN = 3
         CONSTRAINT = 4
-        CPARENTHESIS = 5
+        KW_CLOSEPAREN = 5
 
 
 @dataclasses.dataclass
@@ -797,12 +822,14 @@ class Where(SQL):
         for k, v in self.where.items():
             if isinstance(v, Where):
                 v.keyword = ""
-                extras.append(f"{LINE + k} ({ds_sql(v) + LINE})")
+                extras.append(f"{LINE + str(k)} ({ds_sql(v) + LINE})")
             else:
                 if isinstance(v, (str, int, float)):
                     v = self.get_comparison(column=k, target=v)  # type: ignore
-                if hasattr(v, "column") and v.column == TBD:
-                    v.column = Column(name=k)
+                if hasattr(v, "column") and v.column == TBD:  # type: ignore
+                    v.column = columnify(k)  # type: ignore
+                if isinstance(v, (Column, Qname)):
+                    v = self.get_comparison(k, v)  # type: ignore
                 clause_list.append(v)
         return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=LINE + TAB + "AND ")}{joinmap(extras, seperator=LINE)}"""
 
@@ -811,26 +838,32 @@ class Where(SQL):
 
     @dataclasses.dataclass
     class Comparison:
-        column: t.Union[ColumnLike, t.Type[TBD]]
+        column: t.Union[
+            t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"], t.Type[TBD]
+        ]
         target: t.Union[Statement, str, t.Type[TBD]]
-        operator: ComparisonOperator
+        operator: t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
 
         def sql(self):
-            if self.column == TBD:
+            if self.column == TBD or self.column is None:
                 raise TypeError("Column argument is required")
-            return f"{ds_identity(self.column).sql()} {self.operator} {TypeMaster.cast(self.target)}"
+            if isinstance(self.target, (Column, Qname)):
+                t = ds_sql(ds_identity(self.target))
+            else:
+                t = TypeMaster.cast(self.target)
+            return f"{ds_sql(ds_identity(self.column))} {self.operator} {ds_sql(ds_identity(t))}"
 
     @classmethod
     def get_comparison(
         cls,
-        column: ColumnLike = TBD,
+        column: t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"] = TBD,
         target: Statement = None,
-        operator: ComparisonOperator = "=",
+        operator: t.Literal["=", ">", "<", "!=", "<>", ">=", "<="] = "=",
     ) -> "Where.Comparison":
         if target is None:
             raise TypeError("target argument is required")
         return cls.Comparison(
-            column=columnify(column), target=target, operator=operator
+            column=columnify(column), target=target, operator=operator  # type: ignore
         )
 
     equal = eq = functools.partialmethod(get_comparison, operator="=")
@@ -864,3 +897,181 @@ class Where(SQL):
         return cls.In(column=column, target=target, invert=invert)
 
     not_in = functools.partialmethod(is_in, invert=True)
+
+
+@dataclasses.dataclass
+class On(Where):
+    keyword: str = "ON"
+
+
+@dataclasses.dataclass
+class Join(DBObject, TableObjectBase):
+    on: t.Optional[WhereLike] = None
+
+    @property
+    def component_seperator(self):
+        return " "
+
+    def join_sql(self) -> str:
+        return "JOIN "
+
+    def table_sql(self) -> str:
+        return ds_sql(ds_identity(self.table))
+
+    def on_sql(self) -> str:
+        if isinstance(self.on, dict):
+            self.on = On(self.on)
+        return ds_sql(self.on)
+
+    class Order(Enum):
+        JOIN = 1
+        TABLE = 2
+        ON = 3
+
+
+# SECTION 5: Utility functions
+def name_parse(object: str) -> t.Tuple[t.Optional[str], t.List[str]]:
+    split = [p for p in re.split(r"\s", object) if p.lower() != "as"]
+    if len(split) > 1:
+        alias = split.pop()
+    else:
+        alias = None
+    parts = [re.sub(r"[\[\]]", "", p) for p in re.split(r"\.", split[0])]
+    return (alias, parts)
+
+
+@functools.singledispatch
+def tablify(object):
+    if not isinstance(object, (Table, Qname, RawSQL)):
+        raise ValueError("Only instances of str, Table, Qnam,e and RawSQL are valid.")
+    return object
+
+
+@tablify.register
+def _(object: str) -> Qname:  # type: ignore
+    alias, schema_name, table_name = None, None, None
+    alias, parts = name_parse(object)
+    if (length := len(parts)) == 2:
+        schema_name, table_name = parts
+    if length == 1:
+        table_name = parts[0]
+    return Qname(alias=alias, schema_name=schema_name, table_name=table_name)
+
+
+@functools.singledispatch
+def columnify(object):
+    if object != TBD and not isinstance(object, (Column, Qname, RawSQL)):
+        raise ValueError(
+            "Only instances of str, Column, Qname, TBD, and RawSQL are valid."
+        )
+    return object
+
+
+@columnify.register
+def _(object: str) -> Qname:  # type: ignore
+    alias, schema_name, table_name, column_name = None, None, None, None
+    alias, parts = name_parse(object)
+    if (length := len(parts)) == 3:
+        schema_name, table_name, column_name = parts
+    if length == 2:
+        table_name, column_name = parts
+    if length == 1:
+        column_name = parts[0]
+    return Qname(
+        alias=alias,
+        schema_name=schema_name,
+        table_name=table_name,
+        column_name=column_name,
+    )
+
+
+def resolve(o: t.Any, attrs: t.Any):
+    for a in listify(attrs):
+        try:
+            attr = getattr(o, a)
+            if callable(attr):
+                return attr()
+            else:
+                return attr
+        except AttributeError:
+            pass
+        except TypeError as e:
+            if "is not callable" in str(e):
+                pass
+    return o
+
+
+ds_name = functools.partial(resolve, attrs=["name"])
+ds_identity = functools.partial(resolve, attrs=["identity"])
+ds_sql = functools.partial(resolve, attrs=["sql"])
+
+
+def ds_where(where: WhereLike) -> Where:
+    return where if isinstance(where, Where) else Where(where)
+
+
+def listify(o: t.Any):
+    return o if isinstance(o, list) else [o]
+
+
+def joinmap(o, f: t.Callable = ds_name, seperator: str = ", ") -> str:
+    """ Returns a seperated list of f(i) for i in o. """
+    return seperator.join([str(f(o)) for o in listify(o)])
+
+
+def hook_setter(run_once=True, attribute=""):  # pragma: no cover
+    def outer_wrapper(func):
+        @functools.wraps(func)
+        def f(*args):
+            func(args[0])
+            if run_once:
+                setattr(Database, attribute, lambda x: x)
+
+        setattr(Database, attribute, f)
+
+    return outer_wrapper
+
+
+@functools.singledispatch
+def table_ident(object: str) -> Qname:
+    return tablify(object)  # type: ignore
+
+
+@table_ident.register
+def _(object: Table) -> Qname:
+    return object.identity
+
+
+@table_ident.register
+def _(object: Qname) -> Qname:
+    return object
+
+
+def same_table(
+    a: t.Union[str, Table, Qname, RawSQL], b: t.Union[str, Table, Qname, RawSQL]
+) -> bool:
+    def lo(object):
+        return resolve(object, "lower")
+
+    a, b, match = table_ident(a), table_ident(b), True
+    if not hasattr(a, "schema_name") or not hasattr(b, "schema_name"):
+        match = False
+    elif (
+        a.schema_name is not None
+        and b.schema_name is not None
+        and lo(resolve(b, "schema_name")) != lo(resolve(a, "schema_name"))
+    ):
+        match = False
+    if lo(resolve(a, "table_name")) != lo(resolve(b, "table_name")):
+        match = False
+    if not isinstance((a_str := lo(ds_sql(a))), str) or not isinstance(
+        (b_str := lo(ds_sql(b))), str
+    ):
+        match = False
+    elif re.sub(r"\s+" , " ", a_str).strip() == re.sub(r"\s+" , " ", b_str).strip():
+        match = True
+    return match
+
+
+pre_connect = functools.partial(hook_setter, attribute="pre_connect_hook")
+post_connect = functools.partial(hook_setter, attribute="post_connect_hook")

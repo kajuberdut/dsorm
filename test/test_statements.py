@@ -1,10 +1,9 @@
 import pytest
 from dsorm import Column, Database, Insert, Qname, Statement, Table
-from dsorm.dsorm import Registered
 
 
 def test_static_default():
-    assert Column(name="bob", default="bob").sql() == "bob TEXT DEFAULT 'bob'"
+    assert Column(column_name="bob", default="bob").sql() == "bob TEXT DEFAULT 'bob'"
 
 
 def data_func(data):
@@ -17,11 +16,11 @@ def no_arg_func():
 
 def test_insert_defaults():
     t = Table(
-        name="NoneTable",
+        table_name="NoneTable",
         column=[
-            Column(name="Some Column", python_type=str),
-            Column(name="datafunc", python_type=str, default=data_func),
-            Column(name="noargfunc", python_type=str, default=no_arg_func),
+            Column(column_name="Some Column", python_type=str),
+            Column(column_name="datafunc", python_type=str, default=data_func),
+            Column(column_name="noargfunc", python_type=str, default=no_arg_func),
         ],
     )
     s = t.insert(data={"Some Column": "stuff"}).sql()
@@ -31,11 +30,11 @@ def test_insert_defaults():
 
 def test_insert_only_defaults():
     t = Table(
-        name="NoneTable",
+        table_name="NoneTable",
         column=[
-            Column(name="Some Column", python_type=str),
-            Column(name="datafunc", python_type=str, default=data_func),
-            Column(name="noargfunc", python_type=str, default=no_arg_func),
+            Column(column_name="Some Column", python_type=str),
+            Column(column_name="datafunc", python_type=str, default=data_func),
+            Column(column_name="noargfunc", python_type=str, default=no_arg_func),
         ],
     )
     assert "DEFAULT VALUES" in t.insert(data=None).sql()
@@ -72,13 +71,7 @@ def test_set_db_after(db_path):
     s.db = Database(db_path)
 
 
-def test_noname_registered_object():
-    with pytest.raises(ValueError) as e:
-        Registered()
-        assert "name must be set to register object" in e
-
-
 def test_qname():
-    q = Qname(parts=["main", "thing"])
+    q = Qname(schema_name="main", table_name="thing")
     assert q.name == "thing"
     assert q.sql() == "[main].[thing]"

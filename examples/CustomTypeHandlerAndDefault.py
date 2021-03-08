@@ -35,12 +35,12 @@ def default_uuid():
 
 
 person = Table(
-    name="person",
+    table_name="person",
     column=[
-        Column("id", python_type=UUID, pkey=True, default=default_uuid),
-        Column("first_name", nullable=False),
-        Column("last_name", nullable=False),
-        Column("create_date", python_type=datetime, default=datetime.now),
+        Column(column_name="id", python_type=UUID, pkey=True, default=default_uuid),
+        Column(column_name="first_name", nullable=False),
+        Column(column_name="last_name", nullable=False),
+        Column(column_name="create_date", python_type=datetime, default=datetime.now),
     ],
 )
 
