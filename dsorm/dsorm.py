@@ -527,6 +527,7 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
             for c in self.column
             if hasattr(c, "name")
         }
+        self["JOIN"] = Clauses()
 
     def select_sql(self):
         self["SELECT"] = "SELECT"
@@ -545,11 +546,20 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
     def add_column(self, column: t.Union[t.List, str, "Column"]) -> None:
         [self.column.append(columnify(c)) for c in listify(column)]
 
-    def join(self, join_table, columns: t.Optional[t.List] = None, on: t.Optional["On"] = None, keyword="JOIN") -> "Select":
+    def join(
+        self,
+        join_table,
+        columns: t.Optional[t.List] = None,
+        on: t.Optional[t.Union["On", t.Dict]] = None,
+        keyword="JOIN",
+    ) -> "Select":
         if on is None:
             on = self.table.on_from_constraints(join_table)
-        self["JOIN"] = Join(table=join_table, on=on, keyword=keyword)
-        [self.add_column(c) for c in columns]
+        elif isinstance(on, dict):
+            on = On(where={k: columnify(v) for k, v in on.items()})
+        self["JOIN"].add_clause(Join(table=join_table, on=on, keyword=keyword))
+        if columns:
+            [self.add_column(c) for c in columns]
         return self
 
     left_join = functools.partialmethod(join, keyword="LEFT JOIN")
@@ -763,14 +773,24 @@ class Table(Statement, DBObject):
         return On(
             {
                 c.column: c.reference
-                for c in [c for c in self.constraints if same_table(resolve(resolve(c, "reference"), "table"), target)]
-                + [c for c in target.constraints if same_table(resolve(resolve(c, "reference"), "table"), self)]
+                for c in [
+                    c
+                    for c in self.constraints
+                    if same_table(resolve(resolve(c, "reference"), "table"), target)
+                ]
+                + [
+                    c
+                    for c in target.constraints
+                    if same_table(resolve(resolve(c, "reference"), "table"), self)
+                ]
             }
         )
 
     @property
     def identity(self):
-        return Qname(schema_name=self.schema_name, table_name=self.name, alias=self.alias)
+        return Qname(
+            schema_name=self.schema_name, table_name=self.name, alias=self.alias
+        )
 
     def insert(
         self,
@@ -941,7 +961,37 @@ class Join(DBObject, TableObjectBase):
         ON = 3
 
 
+@dataclasses.dataclass
+class Clauses(SQL):
+    clauses: t.List = dataclasses.field(default_factory=list)
+    seperator: str = LINE
+
+    def sql(self):
+        return self.seperator.join([ds_sql(i) for i in self.clauses])
+
+    def add_clause(self, clause):
+        self.clauses.append(clause)
+
+
 # SECTION 5: Utility functions
+def resolve(o: t.Any, attrs: t.Any):
+    for a in listify(attrs):
+        try:
+            attr = getattr(o, a)
+            if callable(attr):
+                return attr()
+            else:
+                return attr
+        except AttributeError:
+            pass
+    return o
+
+
+ds_name = functools.partial(resolve, attrs=["name"])
+ds_identity = functools.partial(resolve, attrs=["identity"])
+ds_sql = functools.partial(resolve, attrs=["sql"])
+
+
 def name_parse(object: str) -> t.Tuple[t.Optional[str], t.List[str]]:
     split = [p for p in re.split(r"\s", object) if p.lower() != "as"]
     if len(split) > 1:
@@ -997,28 +1047,6 @@ def _(object: str) -> Qname:  # type: ignore
     )
 
 
-def resolve(o: t.Any, attrs: t.Any):
-    for a in listify(attrs):
-        try:
-            attr = getattr(o, a)
-            if callable(attr):
-                return attr()
-            else:
-                return attr
-        except AttributeError:
-            pass
-    return o
-
-
-ds_name = functools.partial(resolve, attrs=["name"])
-ds_identity = functools.partial(resolve, attrs=["identity"])
-ds_sql = functools.partial(resolve, attrs=["sql"])
-
-
-def ds_where(where: WhereLike) -> Where:
-    return where if isinstance(where, Where) else Where(where)
-
-
 def listify(o: t.Any):
     return o if isinstance(o, list) else [o]
 
@@ -1064,7 +1092,7 @@ def same_table(
         (b_str := lo(ds_sql(b))), str
     ):
         match = False
-    elif re.sub(r"\s+" , " ", a_str).strip() == re.sub(r"\s+" , " ", b_str).strip():
+    elif re.sub(r"\s+", " ", a_str).strip() == re.sub(r"\s+", " ", b_str).strip():
         match = True
     return match
 
@@ -1084,25 +1112,3 @@ def hook_setter(run_once=True, attribute=""):  # pragma: no cover
 
 pre_connect = functools.partial(hook_setter, attribute="pre_connect_hook")
 post_connect = functools.partial(hook_setter, attribute="post_connect_hook")
-
-
-if __name__ == "__main__":
-    AUTHOR_NAME = "JK Rowling"
-    BOOK_NAME = "Harry Potter"
-
-    db = Database.from_dict({
-        "db_path": ":memory:",
-        "tables": {
-            "book": {"id": ID_COLUMN, "name": str, "author_id": int},
-            "author": {"id": ID_COLUMN, "name": str},
-        },
-        "constraints": {"book.author_id": "author.id"},
-        "data": {
-            "author": {"id": 1, "name": AUTHOR_NAME},
-            "book": {"name": BOOK_NAME, "author_id": 1},
-        },
-    })
-
-    book, author = db.table("book"), db.table("author")
-
-    print(book.on_from_constraints(author).sql())

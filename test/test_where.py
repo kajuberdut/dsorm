@@ -1,13 +1,6 @@
-from dsorm.dsorm import columnify
 import pytest
-from dsorm import Where, ds_where
-
-
-def test_where_none():
-    assert Where({}).sql() == ""
-    w = Where({1: 2})
-    assert ds_where({1: 2}) == w
-    assert ds_where(w) == w
+from dsorm import Where
+from dsorm.dsorm import columnify
 
 
 def test_comparison():
