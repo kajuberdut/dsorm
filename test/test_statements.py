@@ -1,3 +1,4 @@
+from dsorm.dsorm import columnify
 import pytest
 from dsorm import Column, Database, Insert, Qname, Statement, Table
 
@@ -75,3 +76,17 @@ def test_qname():
     q = Qname(schema_name="main", table_name="thing")
     assert q.name == "thing"
     assert q.sql() == "[main].[thing]"
+
+
+def test_columnify():
+    TABLE_NAME = "BobsTable"
+    COLUMN_NAME = "bob"
+    t = Table(table_name=TABLE_NAME, column=[Column.from_tuple((COLUMN_NAME, str))])
+    c = t.column[0]
+    q = columnify(f"{TABLE_NAME}.{COLUMN_NAME}")
+    assert c.identity.sql() == q.sql()
+
+
+def test_bad_columnify():
+    with pytest.raises(ValueError):
+        columnify(1)

@@ -16,7 +16,6 @@ from enum import Enum
 from inspect import getattr_static, signature
 from sqlite3.dbapi2 import OperationalError
 
-from attr import has
 
 # SECTION 1: Types / Literals
 WhereLike = t.Union["Where", t.Dict]
@@ -381,7 +380,7 @@ class Pragma(DBObject, SQL):
 
 @dataclasses.dataclass
 class Statement(SQL):
-    components: t.Dict = dataclasses.field(default_factory=dict)
+    components: t.Dict = dataclasses.field(default_factory=dict, repr=False)
 
     @property
     def component_seperator(self):
@@ -411,7 +410,7 @@ class Statement(SQL):
         return key
 
     @get_order.register
-    def _(self, key: int) -> Enum:
+    def _(self, key: int) -> Enum:  # type: ignore
         return self.Order(key)
 
     @get_order.register
@@ -545,6 +544,17 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
 
     def add_column(self, column: t.Union[t.List, str, "Column"]) -> None:
         [self.column.append(columnify(c)) for c in listify(column)]
+
+    def join(self, join_table, columns: t.Optional[t.List] = None, on: t.Optional["On"] = None, keyword="JOIN") -> "Select":
+        if on is None:
+            on = self.table.on_from_constraints(join_table)
+        self["JOIN"] = Join(table=join_table, on=on, keyword=keyword)
+        [self.add_column(c) for c in columns]
+        return self
+
+    left_join = functools.partialmethod(join, keyword="LEFT JOIN")
+    right_join = functools.partialmethod(join, keyword="RIGHT JOIN")
+    full_join = functools.partialmethod(join, keyword="FULL OUTER JOIN")
 
     class Order(Enum):
         CTE = 1
@@ -710,6 +720,7 @@ class Table(Statement, DBObject):
     column: t.List = dataclasses.field(default_factory=list)
     constraints: t.List = dataclasses.field(default_factory=list)
     schema_name: t.Optional[str] = None
+    alias: t.Optional[str] = None
 
     @classmethod
     def from_dict(cls, table_name: str, d: t.Dict, db=None) -> "Table":
@@ -752,14 +763,14 @@ class Table(Statement, DBObject):
         return On(
             {
                 c.column: c.reference
-                for c in [c for c in self.constraints if c.reference.table == target]
-                + [c for c in target.constraints if c.reference.table == self]
+                for c in [c for c in self.constraints if same_table(resolve(resolve(c, "reference"), "table"), target)]
+                + [c for c in target.constraints if same_table(resolve(resolve(c, "reference"), "table"), self)]
             }
         )
 
     @property
     def identity(self):
-        return Qname(schema_name=self.schema_name, table_name=self.name)
+        return Qname(schema_name=self.schema_name, table_name=self.name, alias=self.alias)
 
     def insert(
         self,
@@ -907,13 +918,14 @@ class On(Where):
 @dataclasses.dataclass
 class Join(DBObject, TableObjectBase):
     on: t.Optional[WhereLike] = None
+    keyword: str = "JOIN"
 
     @property
     def component_seperator(self):
         return " "
 
     def join_sql(self) -> str:
-        return "JOIN "
+        return f"{self.keyword} "
 
     def table_sql(self) -> str:
         return ds_sql(ds_identity(self.table))
@@ -995,9 +1007,6 @@ def resolve(o: t.Any, attrs: t.Any):
                 return attr
         except AttributeError:
             pass
-        except TypeError as e:
-            if "is not callable" in str(e):
-                pass
     return o
 
 
@@ -1019,26 +1028,13 @@ def joinmap(o, f: t.Callable = ds_name, seperator: str = ", ") -> str:
     return seperator.join([str(f(o)) for o in listify(o)])
 
 
-def hook_setter(run_once=True, attribute=""):  # pragma: no cover
-    def outer_wrapper(func):
-        @functools.wraps(func)
-        def f(*args):
-            func(args[0])
-            if run_once:
-                setattr(Database, attribute, lambda x: x)
-
-        setattr(Database, attribute, f)
-
-    return outer_wrapper
-
-
 @functools.singledispatch
 def table_ident(object: str) -> Qname:
     return tablify(object)  # type: ignore
 
 
 @table_ident.register
-def _(object: Table) -> Qname:
+def _(object: Table) -> Qname:  # type: ignore
     return object.identity
 
 
@@ -1073,5 +1069,40 @@ def same_table(
     return match
 
 
+def hook_setter(run_once=True, attribute=""):  # pragma: no cover
+    def outer_wrapper(func):
+        @functools.wraps(func)
+        def f(*args):
+            func(args[0])
+            if run_once:
+                setattr(Database, attribute, lambda x: x)
+
+        setattr(Database, attribute, f)
+
+    return outer_wrapper
+
+
 pre_connect = functools.partial(hook_setter, attribute="pre_connect_hook")
 post_connect = functools.partial(hook_setter, attribute="post_connect_hook")
+
+
+if __name__ == "__main__":
+    AUTHOR_NAME = "JK Rowling"
+    BOOK_NAME = "Harry Potter"
+
+    db = Database.from_dict({
+        "db_path": ":memory:",
+        "tables": {
+            "book": {"id": ID_COLUMN, "name": str, "author_id": int},
+            "author": {"id": ID_COLUMN, "name": str},
+        },
+        "constraints": {"book.author_id": "author.id"},
+        "data": {
+            "author": {"id": 1, "name": AUTHOR_NAME},
+            "book": {"name": BOOK_NAME, "author_id": 1},
+        },
+    })
+
+    book, author = db.table("book"), db.table("author")
+
+    print(book.on_from_constraints(author).sql())
