@@ -7,10 +7,10 @@ db = Database.from_dict(
     {
         "db_path": ":memory:",
         "tables": {
+            "location": {"id": ID_COLUMN, "name": str},
             "book": {"id": ID_COLUMN, "name": str, "author_id": int},
             "author": {"id": ID_COLUMN, "name": str},
             "publisher": {"id": ID_COLUMN, "name": str},
-            "location": {"id": ID_COLUMN, "name": str},
             "book_publisher": {
                 "id": ID_COLUMN,
                 "location_id": int,
@@ -58,25 +58,29 @@ book, author, book_publisher, publisher, location = (
 
 # Join Example
 s = (
-    book.select(where={book["name"]: BOOK_NAME})
+    book.select(where={book["name"]: BOOK_NAME}, column=["book.name as book_name"])
     .join(author, columns=["author.name as author_name"])
     .join(join_table=book_publisher)
-    .join(join_table=publisher, on={"book_publisher.publisher_id": "publisher.id"}, columns=["publisher.name as publisher_name"])
-    .join(join_table=location, on={"book_publisher.location_id": "location.id"}, columns=["location.name as location_name"])
+    .join(
+        join_table=publisher,
+        on={"book_publisher.publisher_id": "publisher.id"},
+        columns=["publisher.name as publisher_name"],
+    )
+    .join(
+        join_table=location,
+        on={"book_publisher.location_id": "location.id"},
+        columns=["location.name as location_name"],
+    )
 )
 
 
 print(s.execute())
-# [ {     'id': 1
-#       , 'name': 'Harry Potter'
-#       , 'author_id': 1
+# [ {     'book_name': 'Harry Potter'
 #       , 'author_name': 'JK Rowling'
 #       , 'publisher_name': 'Scholastic Press'
 #       , 'location_name': 'US'
 #   }
-#   , {     'id': 1
-#       , 'name': 'Harry Potter'
-#       , 'author_id': 1
+#   , {   'book_name': 'Harry Potter'
 #       , 'author_name': 'JK Rowling'
 #       , 'publisher_name': 'Bloomsbury'
 #       , 'location_name': 'UK'
@@ -86,9 +90,7 @@ print(s.execute())
 
 print(s.sql())
 """
-SELECT [book].[id]
-     , [book].[name]
-     , [book].[author_id]
+SELECT [book].[name] as book_name
      , [author].[name] AS author_name
      , [publisher].[name] AS publisher_name
      , [location].[name] AS location_name

@@ -987,9 +987,9 @@ def resolve(o: t.Any, attrs: t.Any):
     return o
 
 
-ds_name = functools.partial(resolve, attrs=["name"])
-ds_identity = functools.partial(resolve, attrs=["identity"])
-ds_sql = functools.partial(resolve, attrs=["sql"])
+ds_name = functools.partial(resolve, attrs="name")
+ds_identity = functools.partial(resolve, attrs="identity")
+ds_sql = functools.partial(resolve, attrs="sql")
 
 
 def name_parse(object: str) -> t.Tuple[t.Optional[str], t.List[str]]:
