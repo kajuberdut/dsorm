@@ -76,7 +76,7 @@ Darned Simple ORM (dsORM) is a little bit different from other ORMs.
 The typical ORM approach is to have developers "map" their classes to a database and then do "magic" to make that database work.
 dsORM aims instead to map database components into easy to use Python objects which can be leveraged by your classes for database interactions.
 
-If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is simple, the entire functional code is in a single file which is currently under 1,000 lines.
+If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is simple, the entire functional code is in a single file which is currently under 1,500 lines.
 For comparison, PeeWee, a fairly small ORM is 7,723 lines long in it's main file and that doesn't contain all of it's functional code.
 SQLAlchemy as of this writing contains 343,975 lines of Python code (though admittedly it dwarfs dsORM's feature set.)
 
@@ -125,28 +125,26 @@ person = Table(
     table_name="person",
     column=[
         Column.id(),  # This is shorthand for Column("id", int, pkey=True)
-        Column(column_name="first_name", nullable=False),
-        Column(column_name="last_name", nullable=False),
+        Column(column_name="first_name", python_type=str),
+        Column(column_name="last_name", python_type=str),
     ],
 )
-
 print(person.sql())
+# CREATE TABLE IF NOT EXISTS person (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT);
 
-
-person2 = Table.from_dict(
-    "person",
-    {
+# Alternate way of declaring tables using a dictionary of columns
+person2 = Table.from_object(
+    table_name="person",
+    object={
         "id": ID_COLUMN,
-        "first_name": {"nullable": False},
-        "last_name": {"nullable": False},
+        "first_name": str,
+        "last_name": str,
     },
 )
-
-print(person2.sql())
+assert person2.sql() == person.sql()
 
 # See Database example for more details about the Database object
 Database(db_path=":memory:", is_default=True).init_db()  # This creates all tables
-
 
 # Tables have insert, select, and delete methods.
 # These return a Statement
@@ -159,7 +157,6 @@ stmt = person.insert(
 
 # Statements can be examined with .sql method
 print(stmt.sql())
-
 # INSERT INTO Main.person (first_name, last_name)
 # VALUES ('Jane', 'Doe'), ('John', 'Doe')
 
@@ -167,7 +164,7 @@ print(stmt.sql())
 stmt.execute()
 
 # select returns a list of dicts of rows matching the where
-does = person.select(
+doe_family = person.select(
     where={"first_name": Where.like(target="J%n%")},
     column=[
         "id",
@@ -175,11 +172,11 @@ does = person.select(
     ],
 ).execute()
 
-print(does)
+print(doe_family)
 # [{"id": 1, "full_name": "John Doe"}, {"id": 2, "full_name": "Jane Doe"}]
 
 # And Delete
-person.delete(where={"id": does[0]["id"]}).execute()
+person.delete(where={"id": doe_family[0]["id"]}).execute()
 print([r["id"] for r in person.select().execute()])
 # [2]
 ```

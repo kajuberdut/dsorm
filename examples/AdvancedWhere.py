@@ -7,7 +7,7 @@ It also includes an additional example of custom type handling
 from enum import IntEnum
 from random import randint
 
-from dsorm import Column, Database, Table, TypeHandler, Where
+from dsorm import Column, Database, Table, Where
 
 
 class Gender(IntEnum):
@@ -15,20 +15,9 @@ class Gender(IntEnum):
     MALE = 2
 
 
-class GenderHandler(TypeHandler):
-    python_type = Gender
-    sql_type = "INTEGER"
-
-    @staticmethod
-    def s2p(value) -> Gender:
-        return Gender(value)
-
-    @staticmethod
-    def p2s(value) -> int:
-        return int(value)
-
-
-GenderHandler.register()
+# Table.from_object can take an enum as a value
+# This will automatically create a type handler for the enumeration
+gender_table = Table.from_object(Gender)
 
 person = Table(
     table_name="Person",

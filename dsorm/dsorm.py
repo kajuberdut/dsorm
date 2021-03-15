@@ -12,10 +12,9 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime
-from enum import Enum
+from enum import Enum, EnumMeta
 from inspect import getattr_static, signature
 from sqlite3.dbapi2 import OperationalError
-
 
 # SECTION 1: Types / Literals
 WhereLike = t.Union["Where", t.Dict]
@@ -27,6 +26,7 @@ KW = {
     "CLOSEPAREN": ")",
     "FOREIGNKEY": "FOREIGN KEY",
     "REFERENCES": "REFERENCES",
+    "TERMINATOR": ";\n",
 }
 
 
@@ -43,8 +43,8 @@ class Database:
     def from_dict(cls, d: t.Dict) -> "Database":
         db = cls(db_path=d.get("db_path", ":memory:"))
         tables = {
-            table_name: Table.from_dict(table_name=table_name, d=definition, db=db)
-            for table_name, definition in d.get("tables", {}).items()
+            table_name: Table.from_object(object, table_name=table_name, db=db)
+            for table_name, object in d.get("tables", {}).items()
         }
         for ct in d.get("constraints", {}).items():
             ct = tuple([i for i in ct if isinstance(i, (Column, str, Qname, RawSQL))])
@@ -131,9 +131,10 @@ class Database:
         """ Execute a sql command with optional parameters """
         with self.cursor() as cur:
             try:
-                cur.execute(
-                    *[i for i in [ds_sql(command), parameters] if i is not None]
-                )
+                if ";" in (sql := ds_sql(command)):
+                    cur.executescript(sql)
+                else:
+                    cur.execute(*[i for i in [sql, parameters] if i is not None])
             except (OperationalError, ValueError) as e:
                 print(f"Syntax error in: {ds_sql(command)}\n\nError: {str(e)}")
                 raise
@@ -146,6 +147,18 @@ class Database:
 
     def register(self, object):
         self.information_schema[type(object).__name__][object.name] = object
+
+    @functools.lru_cache
+    def id(
+        self, table_name: str, column_name: str, column_value: t.Any
+    ) -> t.Optional[int]:
+        table = self.table(table_name)
+        result = table.select(
+            column=[table["id"]],
+            where={c: column_value for c in listify(table[column_name])},
+        ).execute()
+        if result is not None and len(result) == 1:
+            return result[0]["id"]
 
 
 # SECTION 3: Type handlers
@@ -314,7 +327,7 @@ class RawSQL(SQL):
 
 @dataclasses.dataclass
 class Qname(SQL):
-    db: t.Optional[str] = None
+    db: t.Optional[t.Union[str, Database]] = None
     schema_name: t.Optional[str] = None
     table_name: t.Optional[str] = None
     column_name: t.Optional[str] = None
@@ -731,25 +744,31 @@ class Table(Statement, DBObject):
     constraints: t.List = dataclasses.field(default_factory=list)
     schema_name: t.Optional[str] = None
     alias: t.Optional[str] = None
+    refdata: dataclasses.InitVar[t.Optional[t.Union[t.Dict, t.List]]] = None
 
-    @classmethod
-    def from_dict(cls, table_name: str, d: t.Dict, db=None) -> "Table":
-        return cls(
-            table_name=table_name,
-            column=[Column.from_tuple(i) for i in d.items()],
-            _db=db,
-        )
+    @staticmethod
+    def from_object(
+        object: t.Union[t.Dict, EnumMeta],
+        table_name: str = None,
+        refdata: t.Dict = None,
+        db: t.Optional[t.Union[str, Database]] = None,
+    ) -> "Table":
+        return tablify(
+            object, table_name=table_name, refdata=refdata, db=db, strict=True
+        )  # type: ignore
 
     @property
     def name(self):
         return self.table_name
 
-    def __post_init__(self):
+    def __post_init__(self, refdata):
         if not self.column or not self.table_name:
             raise ValueError("table_name and column are required for Table instance.")
         for c in self.column:
             c.table = self
         self.db.register(self)
+        if refdata is not None:
+            self.components[self.Order["REFDATA"]] = self.insert(data=refdata)
 
     def create_sql(self):
         return f"CREATE TABLE IF NOT EXISTS {self.name}"
@@ -832,6 +851,8 @@ class Table(Statement, DBObject):
         COLUMN = 3
         CONSTRAINT = 4
         KW_CLOSEPAREN = 5
+        KW_TERMINATOR_1 = 6
+        REFDATA = 7
 
 
 @dataclasses.dataclass
@@ -1003,21 +1024,121 @@ def name_parse(object: str) -> t.Tuple[t.Optional[str], t.List[str]]:
 
 
 @functools.singledispatch
-def tablify(object):
-    if not isinstance(object, (Table, Qname, RawSQL)):
-        raise ValueError("Only instances of str, Table, Qnam,e and RawSQL are valid.")
+def tablify(
+    object,
+    table_name: str = None,
+    refdata: t.Optional[t.Dict] = None,
+    db: Database = None,
+    strict: bool = False,
+):
+    if not isinstance(object, (Table, Qname, EnumMeta, t.Dict, RawSQL)):
+        raise ValueError(
+            "Only instances of str, Table, Qname, dict, and RawSQL, or subclasses of Enum are valid."
+        )
+    if strict and not isinstance(object, (Table, Enum, t.Dict)):
+        raise ValueError(
+            f"{type(object)} type object cannot represent a table in strict contexts."
+        )
     return object
 
 
 @tablify.register
-def _(object: str) -> Qname:  # type: ignore
-    alias, schema_name, table_name = None, None, None
+def _(  # type: ignore
+    object: EnumMeta,
+    table_name: str = None,
+    refdata: t.Optional[t.Dict] = None,
+    db: Database = None,
+    strict: bool = False,
+) -> "Table":
+    if table_name is None:
+        table_name = object.__name__
+    columns = [Column(column_name="name", unique=True)]
+    v_type = int if len(object) == 0 else type(next(object.__iter__()).value)  # type: ignore
+    if v_type == int:
+        value_column = "id"
+        columns.append(Column.from_tuple(("id", ID_COLUMN)))
+    else:
+        value_column = "value"
+        columns.append(Column.id())
+        columns.append(Column(column_name="value", python_type=v_type))
+    table = Table(
+        table_name=table_name,
+        column=columns,
+        refdata=[
+            {"name": member.name, value_column: member.value} for member in object  # type: ignore
+        ],
+        _db=db,
+    )
+
+    @staticmethod
+    def python_to_sql(value) -> str:
+        return str(value.value)
+
+    @staticmethod
+    def sql_to_python(value) -> t.Any:
+        if value is not None:
+            return object(value)
+
+    AutoEnumTypeHandler = type(
+        table_name,
+        (TypeHandler,),
+        {
+            "sql_type": "INTEGER" if v_type == int else "TEXT",
+            "python_type": object,
+            "p2s": python_to_sql,
+            "s2p": sql_to_python,
+        },
+    )
+    AutoEnumTypeHandler.register()
+    return table
+
+
+@tablify.register
+def _(  # type: ignore
+    object: dict,
+    table_name: str = None,
+    refdata: t.Optional[t.Dict] = None,
+    db: Database = None,
+    strict: bool = False,
+) -> Table:
+    if table_name is None and "table_name" in object:
+        table_name = object.pop("table_name")
+    if table_name is None:
+        raise ValueError("table_name is required")
+    if refdata is None and "refdata" in object:
+        refdata = object.pop("refdata")
+    if db is None:
+        db = object.pop("db", None)
+    if "column" not in object and refdata is not None:
+        object = {
+            **{"id": ID_COLUMN},
+            **{k: type(v) for k, v in listify(refdata)[0].items()},
+        }
+    return Table(
+        table_name=table_name,
+        column=[Column.from_tuple(i) for i in object.items()],
+        refdata=refdata,
+        _db=db,
+    )
+
+
+@tablify.register
+def _(  # type: ignore
+    object: str,
+    table_name: str = None,
+    refdata: t.Optional[t.Dict] = None,
+    db: Database = None,
+    strict: bool = False,
+) -> Qname:
+    if strict:
+        raise ValueError("str type object cannot represent a table in strict contexts.")
+    alias, schema_name = None, None
     alias, parts = name_parse(object)
     if (length := len(parts)) == 2:
         schema_name, table_name = parts
     if length == 1:
         table_name = parts[0]
-    return Qname(alias=alias, schema_name=schema_name, table_name=table_name)
+    return Qname(alias=alias, schema_name=schema_name, table_name=table_name, db=db)
 
 
 @functools.singledispatch

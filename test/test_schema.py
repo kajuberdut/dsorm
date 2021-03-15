@@ -18,8 +18,8 @@ def test_column_from_tuple():
     assert c == Column(column_name="test", python_type=str)
 
 
-def test_table_from_dict():
-    t1 = Table.from_dict("TestTable", {"test": str})
+def test_table_from_object():
+    t1 = Table.from_object({"table_name": "TestTable", "test": str})
     t2 = Table(
         table_name="TestTable", column=[Column(column_name="test", python_type=str)]
     )

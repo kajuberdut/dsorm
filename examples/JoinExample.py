@@ -1,16 +1,31 @@
+from enum import Enum
+
 from dsorm import ID_COLUMN, Database
 
 AUTHOR_NAME = "JK Rowling"
 BOOK_NAME = "Harry Potter"
 
+
+class Location(Enum):
+    US = 1
+    UK = 2
+
+
 db = Database.from_dict(
     {
         "db_path": ":memory:",
         "tables": {
-            "location": {"id": ID_COLUMN, "name": str},
+            "location": Location,
             "book": {"id": ID_COLUMN, "name": str, "author_id": int},
-            "author": {"id": ID_COLUMN, "name": str},
-            "publisher": {"id": ID_COLUMN, "name": str},
+            "author": {
+                "refdata": {"name": AUTHOR_NAME},
+            },
+            "publisher": {
+                "refdata": [
+                    {"name": "Bloomsbury"},
+                    {"name": "Scholastic Press"},
+                ],
+            },
             "book_publisher": {
                 "id": ID_COLUMN,
                 "location_id": int,
@@ -21,32 +36,12 @@ db = Database.from_dict(
         "constraints": {
             "book.author_id": "author.id",
             "book_publisher.book_id": "book.id",
-            "book_publisher.location_id": "location.id",
+            "book_publisher.location_id": "location.value",
             "book_publisher.publisher_id": "publisher.id",
-        },
-        "data": {
-            "author": {"id": 1, "name": AUTHOR_NAME},
-            "book": {"id": 1, "name": BOOK_NAME, "author_id": 1},
-            "publisher": [
-                {"id": 1, "name": "Bloomsbury"},
-                {"id": 2, "name": "Scholastic Press"},
-            ],
-            "location": [{"id": 1, "name": "US"}, {"id": 2, "name": "UK"}],
-            "book_publisher": [
-                {
-                    "location_id": 1,
-                    "book_id": 1,
-                    "publisher_id": 2,
-                },
-                {
-                    "location_id": 2,
-                    "book_id": 1,
-                    "publisher_id": 1,
-                },
-            ],
         },
     }
 )
+
 
 book, author, book_publisher, publisher, location = (
     db.table("book"),
@@ -55,6 +50,26 @@ book, author, book_publisher, publisher, location = (
     db.table("publisher"),
     db.table("location"),
 )
+
+book.insert(
+    data={"name": BOOK_NAME, "author_id": db.id("author", "name", AUTHOR_NAME)}
+).execute()
+book_id = db.id("book", "name", BOOK_NAME)
+
+book_publisher.insert(
+    data=[
+        {
+            "location_id": Location.UK,
+            "book_id": book_id,
+            "publisher_id": db.id("publisher", "name", "Bloomsbury"),
+        },
+        {
+            "location_id": Location.US,
+            "book_id": book_id,
+            "publisher_id": db.id("publisher", "name", "Scholastic Press"),
+        },
+    ]
+).execute()
 
 # Join Example
 s = (

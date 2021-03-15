@@ -12,14 +12,14 @@ class UUIDHandler(TypeHandler):
 
     @staticmethod
     def p2s(value):
-        """ This method should return a value that would be valid "as is" in a sql statement. """
+        """ This static method should return a value that would be valid "as is" in a sql statement. """
         return (
             f"'{str(value)}'"  # Note that strings need single quotes to be valid in SQL
         )
 
     @staticmethod
     def s2p(value):
-        """ This method should handle converting a SQLite datatype to a Python datatype. """
+        """ This static method should handle converting a SQLite datatype to a Python datatype. """
         return UUID(value)
 
 
@@ -34,6 +34,7 @@ def default_uuid():
     return uuid4()
 
 
+# DateHandler is built into dsORM
 person = Table(
     table_name="person",
     column=[

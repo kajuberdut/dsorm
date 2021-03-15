@@ -31,7 +31,7 @@ class Book:
     name: str
     text: str
     hash: t.Optional[str] = None
-    auto_save: dataclasses.InitVar = False
+    auto_save: dataclasses.InitVar[bool] = False
 
     def __post_init__(self, auto_save):
         if auto_save:
@@ -53,7 +53,9 @@ class Book:
             else (
                 RawSQL(f"substr(text, {key.start}) AS text")
                 if key.stop is None
-                else RawSQL(f"substr(text, {key.start}, {key.stop - key.start}) AS text")
+                else RawSQL(
+                    f"substr(text, {key.start}, {key.stop - key.start}) AS text"
+                )
             )
         )
         return book_table.select(column=[c]).execute()[0]["text"]
@@ -63,7 +65,7 @@ class Book:
 
 
 if __name__ == "__main__":
-    # See Advanced Configuration for how to defer these
+    # See Advanced Configuration for how to defer setting a default db_path
     Database(db_path=":memory:", is_default=True).init_db()
 
     name = "The Worst Book in the World"
