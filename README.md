@@ -90,7 +90,7 @@ SQLAlchemy as of this writing contains 343,975 lines of Python code (though admi
 
 ### Should I use this?
 #### You should **not** use dsORM if:
-* You need a fully featured and robust ORM supporting multiple back ends
+* You can't work with SQLite
 * You don't have any idea how SQL works and need maximal hand holding
 * You want something that enforces best practices
 
@@ -185,9 +185,9 @@ It's darned simple.
 
 ### Further Examples
 * [A Practical Example](https://github.com/kajuberdut/dsorm/blob/main/examples/PracticalExample.py)
+* [Compound WHERE clauses and Tables from Enum](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedWhere.py)
 * [Joins and Database from Dict](https://github.com/kajuberdut/dsorm/blob/main/examples/JoinExample.py)
 * [Custom Type Handling & Column Defaults](https://github.com/kajuberdut/dsorm/blob/main/examples/CustomTypeHandlerAndDefault.py)
-* [Advanced WHERE clauses](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedWhere.py)
 * [Configuration](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedConfiguration.py)
 <!-- * [Statements](https://github.com/kajuberdut/dsorm/blob/main/examples/Statements.py) -->
 
@@ -196,7 +196,6 @@ It's darned simple.
 ## Roadmap
 
 Needed features:
-* Support for multiple joins
 * Subquery/CTE support
 * Grouping/Aggregates
 * Order/Limit/Offset
