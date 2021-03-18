@@ -188,6 +188,7 @@ It's darned simple.
 * [Compound WHERE clauses and Tables from Enum](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedWhere.py)
 * [Joins and Database from Dict](https://github.com/kajuberdut/dsorm/blob/main/examples/JoinExample.py)
 * [Custom Type Handling & Column Defaults](https://github.com/kajuberdut/dsorm/blob/main/examples/CustomTypeHandlerAndDefault.py)
+* [Store Python Objects with Pickle Data Handler](https://github.com/kajuberdut/dsorm/blob/main/examples/PickleData.py)
 * [Configuration](https://github.com/kajuberdut/dsorm/blob/main/examples/AdvancedConfiguration.py)
 <!-- * [Statements](https://github.com/kajuberdut/dsorm/blob/main/examples/Statements.py) -->
 

@@ -5,6 +5,7 @@ This module provides some abstractions of SQL concepts into Object Relation Mapp
 
 import dataclasses
 import functools
+import pickle
 import re
 import sqlite3
 import typing as t
@@ -15,6 +16,7 @@ from datetime import datetime
 from enum import Enum, EnumMeta
 from inspect import getattr_static, signature
 from sqlite3.dbapi2 import OperationalError
+
 
 # SECTION 1: Types / Literals
 WhereLike = t.Union["Where", t.Dict]
@@ -257,13 +259,39 @@ class DateHandler(TypeHandler):
             return datetime.fromtimestamp(value)
 
 
+@staticmethod
+def obj_2_sql(value: datetime) -> str:
+    """ Convert datetime to timestamp """
+    return f"x'{pickle.dumps(value).hex()}'"
+
+
+@staticmethod
+def sql_2_obj(value) -> t.Any:
+    if value is not None:
+        return pickle.loads(bytes(value))
+
+
+class PickleHandler(TypeHandler):
+    sql_type: str = "BLOB"
+    p2s = obj_2_sql
+    s2p = sql_2_obj
+
+
 class TypeMaster:
     type_handlers: t.Dict[t.Type, t.Type[TypeHandler]] = {
         str: StrHandler,
         int: IntHandler,
         float: FloatHandler,
         datetime: DateHandler,
+        list: PickleHandler,
+        dict: PickleHandler,
+        tuple: PickleHandler,
     }
+    _allow_pickle: bool = False
+
+    @classmethod
+    def allow_pickle(cls):
+        cls._allow_pickle = True
 
     @classmethod
     def register(cls, handler: t.Type[TypeHandler]) -> None:
@@ -271,7 +299,12 @@ class TypeMaster:
 
     @classmethod
     def get(cls, python_type: type) -> t.Callable:
-        return cls.type_handlers.get(python_type, lambda x: x)
+        handler = cls.type_handlers.get(python_type, lambda x: x)
+        if not cls._allow_pickle and handler == PickleHandler:
+            raise RuntimeError(
+                f"Type {python_type} cannot be cast unless Pickling is enabled. Call TypeHandler.allow_pickle() to allow if you understand the security risk."
+            )
+        return handler
 
     @classmethod
     def cast(cls, o) -> str:
@@ -768,7 +801,7 @@ class Table(Statement, DBObject):
             c.table = self
         self.db.register(self)
         if refdata is not None:
-            self.components[self.Order["REFDATA"]] = self.insert(data=refdata)
+            self.components[self.Order["REFDATA"]] = self.insert(data=refdata, replace=True)
 
     def create_sql(self):
         return f"CREATE TABLE IF NOT EXISTS {self.name}"
@@ -1013,6 +1046,55 @@ ds_identity = functools.partial(resolve, attrs="identity")
 ds_sql = functools.partial(resolve, attrs="sql")
 
 
+@functools.lru_cache
+def enum_to_id(e: Enum) -> int:
+    return list(type(e).__members__.keys()).index(e.name)
+
+
+def id_to_enum_member(id: int, e: EnumMeta) -> Enum:
+    return list(e.__members__.values())[id]  # type: ignore
+
+
+def enum_type_handler(e: EnumMeta):
+    """Enumerations are an efficient representation of a sql lookup table;
+    it is possible to make predictable primary keys, avoiding lookups.
+    """
+    if (
+        len((enum_types := list(set([type(member.value) for member in e])))) == 1
+        and enum_types[0] == int
+    ):
+
+        @staticmethod
+        def p2s(value) -> str:
+            return str(value.value)
+
+        @staticmethod
+        def s2p(value) -> type(e):
+            return e(int(value))
+
+    else:
+
+        @staticmethod
+        def p2s(value) -> str:
+            return str(enum_to_id(value))
+
+        @staticmethod
+        def s2p(value) -> t.Any:
+            return id_to_enum_member(value, e)
+
+    AutoEnumTypeHandler = type(
+        f"{type(e).__name__}TypeHandler",
+        (TypeHandler,),
+        {
+            "sql_type": "INTEGER",
+            "python_type": e,
+            "p2s": p2s,
+            "s2p": s2p,
+        },
+    )
+    AutoEnumTypeHandler.register()
+
+
 def name_parse(object: str) -> t.Tuple[t.Optional[str], t.List[str]]:
     split = [p for p in re.split(r"\s", object) if p.lower() != "as"]
     if len(split) > 1:
@@ -1050,47 +1132,19 @@ def _(  # type: ignore
     db: Database = None,
     strict: bool = False,
 ) -> "Table":
-    if table_name is None:
-        table_name = object.__name__
-    columns = [Column(column_name="name", unique=True)]
-    v_type = int if len(object) == 0 else type(next(object.__iter__()).value)  # type: ignore
-    if v_type == int:
-        value_column = "id"
-        columns.append(Column.from_tuple(("id", ID_COLUMN)))
-    else:
-        value_column = "value"
-        columns.append(Column.id())
-        columns.append(Column(column_name="value", python_type=v_type))
-    table = Table(
-        table_name=table_name,
-        column=columns,
+    enum_type_handler(object)
+    return Table(
+        table_name=table_name if table_name else object.__name__,
+        column=[
+            Column(column_name="id", python_type=int, pkey=True),
+            Column(column_name="name", unique=True),
+            Column(column_name="value"),
+        ],
         refdata=[
-            {"name": member.name, value_column: member.value} for member in object  # type: ignore
+            {"id": member, "name": member.name, "value": member.value} for member in object  # type: ignore
         ],
         _db=db,
     )
-
-    @staticmethod
-    def python_to_sql(value) -> str:
-        return str(value.value)
-
-    @staticmethod
-    def sql_to_python(value) -> t.Any:
-        if value is not None:
-            return object(value)
-
-    AutoEnumTypeHandler = type(
-        table_name,
-        (TypeHandler,),
-        {
-            "sql_type": "INTEGER" if v_type == int else "TEXT",
-            "python_type": object,
-            "p2s": python_to_sql,
-            "s2p": sql_to_python,
-        },
-    )
-    AutoEnumTypeHandler.register()
-    return table
 
 
 @tablify.register

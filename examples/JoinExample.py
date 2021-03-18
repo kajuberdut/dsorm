@@ -28,7 +28,7 @@ db = Database.from_dict(
             },
             "book_publisher": {
                 "id": ID_COLUMN,
-                "location_id": int,
+                "location_id": Location,
                 "book_id": int,
                 "publisher_id": int,
             },
@@ -108,7 +108,7 @@ print(s.sql())
 SELECT [book].[name] as book_name
      , [author].[name] AS author_name
      , [publisher].[name] AS publisher_name
-     , [location].[name] AS location_name
+     , [book_publisher].[name] AS location_name
 FROM [book]
 JOIN [author] ON [book].[author_id] = [author].[id]
 JOIN [book_publisher] ON [book_publisher].[book_id] = [book].[id]
