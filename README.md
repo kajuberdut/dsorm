@@ -144,7 +144,8 @@ person2 = Table.from_object(
 assert person2.sql() == person.sql()
 
 # See Database example for more details about the Database object
-Database(db_path=":memory:", is_default=True).init_db()  # This creates all tables
+# the .memory() constructor is equivilent to Database(db_path=":memory:", is_default=True)
+Database.memory().init_db()  # This creates all tables
 
 # Tables have insert, select, and delete methods.
 # These return a Statement

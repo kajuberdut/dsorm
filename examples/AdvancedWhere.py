@@ -28,7 +28,7 @@ person = Table(
     ],
 )
 
-Database(db_path=":memory:", is_default=True).init_db()
+Database.memory().init_db()
 
 data = [{"gender": Gender(randint(1, 2)), "age": randint(1, 99)} for i in range(10)]
 

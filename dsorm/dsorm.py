@@ -42,8 +42,12 @@ class Database:
     post_connect_hook: t.Callable = lambda x: x
 
     @classmethod
+    def memory(cls):
+        return cls(db_path=":memory:", is_default=True)
+
+    @classmethod
     def from_dict(cls, d: t.Dict) -> "Database":
-        db = cls(db_path=d.get("db_path", ":memory:"))
+        db = cls(db_path=d.get("db_path")) if "db_path" in d else cls.memory()
         tables = {
             table_name: Table.from_object(object, table_name=table_name, db=db)
             for table_name, object in d.get("tables", {}).items()
@@ -112,6 +116,7 @@ class Database:
             [o.execute() for o in self.information_schema[t].values()]
             for t in ["Pragma", "Table"]
         ]
+        return self
 
     @contextmanager
     def cursor(self, auto_commit=True):
@@ -145,7 +150,8 @@ class Database:
             return cur.fetchall()
 
     def table(self, name: str) -> "Table":
-        return self.information_schema["Table"][name]
+        table_name = name_parse(name)[1][-1]
+        return self.information_schema["Table"][table_name]
 
     def register(self, object):
         self.information_schema[type(object).__name__][object.name] = object
@@ -275,6 +281,10 @@ class PickleHandler(TypeHandler):
     sql_type: str = "BLOB"
     p2s = obj_2_sql
     s2p = sql_2_obj
+
+
+def pickle_type_handler(object: type):
+    type(object.__name__, (PickleHandler,), {"python_type": object}).register()
 
 
 class TypeMaster:
@@ -801,7 +811,9 @@ class Table(Statement, DBObject):
             c.table = self
         self.db.register(self)
         if refdata is not None:
-            self.components[self.Order["REFDATA"]] = self.insert(data=refdata, replace=True)
+            self.components[self.Order["REFDATA"]] = self.insert(
+                data=refdata, replace=True
+            )
 
     def create_sql(self):
         return f"CREATE TABLE IF NOT EXISTS {self.name}"
@@ -1069,7 +1081,7 @@ def enum_type_handler(e: EnumMeta):
             return str(value.value)
 
         @staticmethod
-        def s2p(value) -> type(e):
+        def s2p(value):
             return e(int(value))
 
     else:
@@ -1093,6 +1105,16 @@ def enum_type_handler(e: EnumMeta):
         },
     )
     AutoEnumTypeHandler.register()
+
+
+def table_to_enum(table, enum_name=None, name_column="name", value_column="value") -> EnumMeta:
+    table = tablify(table, strict=True)
+    if enum_name is None:
+        enum_name = table.name
+    data = table.select(column=[name_column, value_column]).execute()
+    if not data:
+        raise ValueError(f"No data in {table}.")
+    return Enum(enum_name, {row[name_column]: row[value_column] for row in data})
 
 
 def name_parse(object: str) -> t.Tuple[t.Optional[str], t.List[str]]:
@@ -1183,8 +1205,12 @@ def _(  # type: ignore
     refdata: t.Optional[t.Dict] = None,
     db: Database = None,
     strict: bool = False,
-) -> Qname:
-    if strict:
+) -> t.Union[Qname, Table]:
+    if db is None:
+        db = Database()
+    if (table := db.table(object)) is not None:
+        return table
+    elif strict:
         raise ValueError("str type object cannot represent a table in strict contexts.")
     alias, schema_name = None, None
     alias, parts = name_parse(object)
@@ -1263,8 +1289,8 @@ def same_table(
         match = False
     if lo(resolve(a, "table_name")) != lo(resolve(b, "table_name")):
         match = False
-    if not isinstance((a_str := lo(ds_sql(a))), str) or not isinstance(
-        (b_str := lo(ds_sql(b))), str
+    if not isinstance((a_str := lo(ds_sql(ds_identity(a)))), str) or not isinstance(
+        (b_str := lo(ds_sql(ds_identity(b)))), str
     ):
         match = False
     elif re.sub(r"\s+", " ", a_str).strip() == re.sub(r"\s+", " ", b_str).strip():

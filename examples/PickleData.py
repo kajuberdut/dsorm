@@ -1,4 +1,4 @@
-from dsorm import ID_COLUMN, Database, Table, TypeMaster, PickleHandler
+from dsorm import ID_COLUMN, Database, Table, TypeMaster, pickle_type_handler
 
 # See: https://docs.python.org/3/library/pickle.html
 # As the documentation says: Warning The pickle module is not secure. Only unpickle data you trust.
@@ -6,26 +6,26 @@ from dsorm import ID_COLUMN, Database, Table, TypeMaster, PickleHandler
 # you must first call:
 TypeMaster.allow_pickle()
 
-config = Table.from_object(
-    table_name="config",
-    object={
-        "id": ID_COLUMN,
-        "user_id": int,
-        "config": dict,
-    },
+db = Database.from_dict(
+    {
+        "tables": {
+            "config": {
+                "id": ID_COLUMN,
+                "user_id": int,
+                "config": dict,
+            },
+        }
+    }
 )
-print(config.sql())
-# CREATE TABLE IF NOT EXISTS config (id INTEGER PRIMARY KEY, user_id INTEGER, config BLOB);
 
-Database(db_path=":memory:", is_default=True).init_db()
-stmt = config.insert(
-    data={"user_id": "1", "config": {"setting_1": 1, "setting_2": "red"}},
+stmt = db.table("config").insert(
+    data={"user_id": 1, "config": {"setting_1": 1, "setting_2": "red"}},
 )
 print(stmt.sql())
 # INSERT INTO [config] (user_id, config)
 # VALUES ('1', x'80049525000000000000007d94288c0973657474696e675f31944b018c0973657474696e675f32948c0372656494752e')
 stmt.execute()
-print(config.select().execute())
+print(db.table("config").select().execute())
 # [{'id': 1, 'user_id': 1, 'config': {'setting_1': 1, 'setting_2': 'red'}}]
 
 
@@ -38,18 +38,16 @@ class CopyCat:
         return f"Cat says: {self._says}"
 
 
-class PickledCat(PickleHandler):
-    python_type = CopyCat
-
-
-PickledCat.register()
+pickle_type_handler(CopyCat)
 
 
 cats = Table.from_object(
     table_name="allcats",
-    object={"cat_id": {"python_type": int, "pkey": True}, "cat": CopyCat},
+    object={"cat_id": ID_COLUMN, "cat": CopyCat},
 )
 cats.execute()
-cats.insert([{"cat": CopyCat("meow")}, {"cat": CopyCat("meowth that's right")}]).execute()
+cats.insert(
+    [{"cat": CopyCat("meow")}, {"cat": CopyCat("meowth that's right")}]
+).execute()
 print(cats.select().execute())
 # [{'cat_id': 1, 'cat': Cat says: meow}, {'cat_id': 2, 'cat': Cat says: meowth that's right}]

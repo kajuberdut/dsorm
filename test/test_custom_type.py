@@ -45,7 +45,7 @@ def test_custom_handler():
         table_name="NoneTable", column=[Column(column_name="NoneColumn", python_type=NoneClass)]
     )
 
-    Database(db_path=":memory:", is_default=True).init_db()
+    Database.memory().init_db()
     t.insert(data={"NoneColumn": NoneClass()})
     t.select(column=["NoneColumn", "1 as thing"])
     t.select(column=["NoneColumn", "1 as thing"])

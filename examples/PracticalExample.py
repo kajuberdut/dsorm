@@ -66,7 +66,7 @@ class Book:
 
 if __name__ == "__main__":
     # See Advanced Configuration for how to defer setting a default db_path
-    Database(db_path=":memory:", is_default=True).init_db()
+    Database.memory().init_db()
 
     name = "The Worst Book in the World"
     Book(name=name, text=(name * 10000), auto_save=True)
