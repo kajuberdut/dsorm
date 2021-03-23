@@ -45,7 +45,7 @@ person = Table(
     ],
 )
 
-Database.memory().init_db()
+Database.memory().initialize()
 
 person.insert(data={"first_name": "John", "last_name": "Doe"}).execute()
 print(person.select().execute())

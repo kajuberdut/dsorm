@@ -1,6 +1,6 @@
 from enum import Enum
 
-from dsorm import ID_COLUMN, Database
+from dsorm import ID_COLUMN, Database, Table
 
 AUTHOR_NAME = "JK Rowling"
 BOOK_NAME = "Harry Potter"
@@ -11,45 +11,46 @@ class Location(Enum):
     UK = 2
 
 
-db = Database.from_dict(
+db = Database.memory()
+
+location = Table.from_object(Location)
+author = Table.from_object(
+    {"table_name": "author", "reference_data": {"name": AUTHOR_NAME}}
+)
+book = Table.from_object(
     {
-        "db_path": ":memory:",
-        "tables": {
-            "location": Location,
-            "book": {"id": ID_COLUMN, "name": str, "author_id": int},
-            "author": {
-                "refdata": {"name": AUTHOR_NAME},
-            },
-            "publisher": {
-                "refdata": [
-                    {"name": "Bloomsbury"},
-                    {"name": "Scholastic Press"},
-                ],
-            },
-            "book_publisher": {
-                "id": ID_COLUMN,
-                "location_id": Location,
-                "book_id": int,
-                "publisher_id": int,
-            },
-        },
-        "constraints": {
-            "book.author_id": "author.id",
-            "book_publisher.book_id": "book.id",
-            "book_publisher.location_id": "location.value",
-            "book_publisher.publisher_id": "publisher.id",
-        },
+        "table_name": "book",
+        "id": ID_COLUMN,
+        "name": str,
+        "author_id": int,
+        "constraints": [author.fkey("author_id")],
+    }
+)
+publisher = Table.from_object(
+    {
+        "table_name": "publisher",
+        "reference_data": [
+            {"name": "Bloomsbury"},
+            {"name": "Scholastic Press"},
+        ],
+    }
+)
+book_publisher = Table.from_object(
+    {
+        "table_name": "book_publisher",
+        "id": ID_COLUMN,
+        "location_id": Location,
+        "book_id": int,
+        "publisher_id": int,
+        "constraints": [
+            location.fkey("location_id"),
+            book.fkey("book_id"),
+            publisher.fkey("publisher_id"),
+        ],
     }
 )
 
-
-book, author, book_publisher, publisher, location = (
-    db.table("book"),
-    db.table("author"),
-    db.table("book_publisher"),
-    db.table("publisher"),
-    db.table("location"),
-)
+db.initialize()
 
 book.insert(
     data={"name": BOOK_NAME, "author_id": db.id("author", "name", AUTHOR_NAME)}

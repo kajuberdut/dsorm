@@ -5,6 +5,7 @@ This module provides some abstractions of SQL concepts into Object Relation Mapp
 
 import dataclasses
 import functools
+import inspect
 import pickle
 import re
 import sqlite3
@@ -16,7 +17,6 @@ from datetime import datetime
 from enum import Enum, EnumMeta
 from inspect import getattr_static, signature
 from sqlite3.dbapi2 import OperationalError
-
 
 # SECTION 1: Types / Literals
 WhereLike = t.Union["Where", t.Dict]
@@ -44,22 +44,6 @@ class Database:
     @classmethod
     def memory(cls):
         return cls(db_path=":memory:", is_default=True)
-
-    @classmethod
-    def from_dict(cls, d: t.Dict) -> "Database":
-        db = cls(db_path=d.get("db_path")) if "db_path" in d else cls.memory()
-        tables = {
-            table_name: Table.from_object(object, table_name=table_name, db=db)
-            for table_name, object in d.get("tables", {}).items()
-        }
-        for ct in d.get("constraints", {}).items():
-            ct = tuple([i for i in ct if isinstance(i, (Column, str, Qname, RawSQL))])
-            tables[resolve(columnify(ct[0]), "table_name")].add_constraint(
-                ForeignKey.from_tuple(ct)
-            )
-        db.init_db()
-        [tables[n].insert(d).execute() for n, d in d.get("data", {}).items()]
-        return db
 
     @property
     def default_db(self):
@@ -110,7 +94,7 @@ class Database:
         if self.db_path:
             del self.connection_pool[self.db_path]
 
-    def init_db(self):
+    def initialize(self):
         """ Create basic db objects. """
         [
             [o.execute() for o in self.information_schema[t].values()]
@@ -143,8 +127,12 @@ class Database:
                 else:
                     cur.execute(*[i for i in [sql, parameters] if i is not None])
             except (OperationalError, ValueError) as e:
-                print(f"Syntax error in: {ds_sql(command)}\n\nError: {str(e)}")
-                raise
+                if (match := re.search(r"no such table:\s(.*)", str(e))) :
+                    self.table(match.group(1)).execute()
+                    self.execute(command=command, parameters=parameters, commit=commit)
+                else:
+                    print(f"Syntax error in: {ds_sql(command)}\n\nError: {str(e)}")
+                    raise
             if commit:
                 self.commit()
             return cur.fetchall()
@@ -333,18 +321,17 @@ class TBD:
 
 @dataclasses.dataclass
 class DBObject:
-    db_path: t.Optional[str] = None
-    _db: t.Optional["Database"] = dataclasses.field(repr=False, default=None)
+    db_path: t.Optional[str] = dataclasses.field(
+        default=None, metadata={"exclude_column": True, "exclude_data": True}
+    )
 
     @property
     def db(self):
-        if self._db is None:
-            self._db = Database(db_path=self.db_path)
-        return self._db
+        return Database(db_path=self.db_path)
 
     @db.setter
     def db(self, db):
-        self._db = db
+        self.db_path = db.db_path if hasattr(db, "db_path") else db
 
     def execute(self) -> t.Optional[t.List]:
         if isinstance(self, SQL):
@@ -352,13 +339,63 @@ class DBObject:
 
 
 class SQL(metaclass=ABCMeta):  # pragma: no cover
+    @classmethod
+    def __subclasshook__(cls, other):
+        hookmethod = getattr(other, "sql", None)
+        return callable(hookmethod)
+
     @abstractmethod
     def sql(self):
         pass
 
 
+class DataProvider(metaclass=ABCMeta):  # pragma: no cover
+    @classmethod
+    def __subclasshook__(cls, other):
+        hookmethod = getattr(other, "data", None)
+        return callable(hookmethod)
+
+    @abstractmethod
+    def data(self) -> t.Dict:
+        pass
+
+
 @dataclasses.dataclass
-class RawSQL(SQL):
+class DataClassTable(DataProvider, DBObject):
+    _table: t.ClassVar[t.Optional["Table"]] = None
+
+    def data(self) -> t.Dict:
+        def get_name(field: dataclasses.Field):
+            column_name = field.metadata.get("column_name")
+            return field.name if column_name is None else column_name
+
+        include = {
+            field.name: get_name(field)
+            for field in dataclasses.fields(self)
+            if not field.metadata.get("exclude_data")
+        }
+        return {
+            include[k]: v for k, v in dataclasses.asdict(self).items() if k in include
+        }
+
+    @classmethod
+    def get_table(cls):
+        if cls._table is None:
+            cls._table = tablify(cls)  # type: ignore
+        return cls._table
+
+    @property
+    def table(self) -> t.Optional["Table"]:
+        cls = type(self)
+        return cls.get_table()  # type: ignore
+
+    def save(self, replace=True):
+        self.table.insert(data=self, replace=replace).execute()
+        return self
+
+
+@dataclasses.dataclass
+class RawSQL:
     text: str
 
     def sql(self) -> str:
@@ -369,7 +406,7 @@ class RawSQL(SQL):
 
 
 @dataclasses.dataclass
-class Qname(SQL):
+class Qname:
     db: t.Optional[t.Union[str, Database]] = None
     schema_name: t.Optional[str] = None
     table_name: t.Optional[str] = None
@@ -413,7 +450,7 @@ class Qname(SQL):
 
 
 @dataclasses.dataclass
-class Pragma(DBObject, SQL):
+class Pragma(DBObject):
     pragma_name: t.Optional[str] = None
     value: t.Optional[str] = None
 
@@ -435,7 +472,7 @@ class Pragma(DBObject, SQL):
 
 
 @dataclasses.dataclass
-class Statement(SQL):
+class Statement:
     components: t.Dict = dataclasses.field(default_factory=dict, repr=False)
 
     @property
@@ -509,7 +546,9 @@ class WhereObjectBase(Statement):
 
 @dataclasses.dataclass
 class Insert(DBObject, TableObjectBase):
-    data: t.Optional[t.Union[t.Dict, t.List]] = dataclasses.field(default_factory=dict)
+    data: t.Optional[t.Union[t.Dict, t.List, DataProvider]] = dataclasses.field(
+        default_factory=dict
+    )
     _prepared_data: t.Optional[t.List] = None
     replace: bool = False
     column: t.List = dataclasses.field(default_factory=list)  # type: ignore
@@ -522,6 +561,10 @@ class Insert(DBObject, TableObjectBase):
     @column.setter
     def column(self, column):
         self._column = column
+
+    def __post_init__(self):
+        if isinstance(self.data, DataProvider):
+            self.data = self.data.data()
 
     def prepared_data(self):
         if self.data and self._prepared_data is None:
@@ -787,32 +830,36 @@ class Table(Statement, DBObject):
     constraints: t.List = dataclasses.field(default_factory=list)
     schema_name: t.Optional[str] = None
     alias: t.Optional[str] = None
-    refdata: dataclasses.InitVar[t.Optional[t.Union[t.Dict, t.List]]] = None
+    reference_data: dataclasses.InitVar[t.Optional[t.Union[t.Dict, t.List]]] = None
 
     @staticmethod
     def from_object(
         object: t.Union[t.Dict, EnumMeta],
         table_name: str = None,
-        refdata: t.Dict = None,
-        db: t.Optional[t.Union[str, Database]] = None,
+        reference_data: t.Dict = None,
+        db_path: t.Optional[t.Union[str, Database]] = None,
     ) -> "Table":
         return tablify(
-            object, table_name=table_name, refdata=refdata, db=db, strict=True
+            object,
+            table_name=table_name,
+            reference_data=reference_data,
+            db_path=db_path,
+            strict=True,
         )  # type: ignore
 
     @property
     def name(self):
         return self.table_name
 
-    def __post_init__(self, refdata):
+    def __post_init__(self, reference_data):
         if not self.column or not self.table_name:
             raise ValueError("table_name and column are required for Table instance.")
         for c in self.column:
             c.table = self
         self.db.register(self)
-        if refdata is not None:
+        if reference_data is not None:
             self.components[self.Order["REFDATA"]] = self.insert(
-                data=refdata, replace=True
+                data=reference_data, replace=True
             )
 
     def create_sql(self):
@@ -858,7 +905,7 @@ class Table(Statement, DBObject):
 
     def insert(
         self,
-        data: t.Optional[t.Union[t.Dict, t.List]],
+        data: t.Optional[t.Union[t.Dict, t.List, DataProvider]],
         column: t.List = None,
         replace: bool = False,
     ) -> Insert:
@@ -867,7 +914,7 @@ class Table(Statement, DBObject):
             column=column if column else self.column,
             replace=replace,
             table=self,
-            _db=self.db,
+            db_path=self.db_path,
         )
 
     def select(self, where: WhereLike = None, column: t.List = None) -> Select:
@@ -875,11 +922,11 @@ class Table(Statement, DBObject):
             where=where if where is not None else Where(),
             column=column if column else self.column,
             table=self,
-            _db=self.db,
+            db_path=self.db_path,
         )
 
     def delete(self, where: WhereLike) -> Delete:
-        return Delete(table=self, where=where, _db=self.db)
+        return Delete(table=self, where=where, db_path=self.db_path)
 
     def __repr__(self):
         return ds_sql(ds_identity(self.identity))
@@ -901,54 +948,21 @@ class Table(Statement, DBObject):
 
 
 @dataclasses.dataclass
-class Where(SQL):
-    where: WhereLike = dataclasses.field(default_factory=dict)
-    keyword: str = "WHERE"
-
-    def __getitem__(self, key):
-        return self.where[key]
-
-    def __setitem__(self, key, value):
-        self.where[key] = value
+class Comparison:
+    column: t.Union[
+        t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"], t.Type[TBD]
+    ]
+    target: t.Union[Statement, str, t.Type[TBD]]
+    operator: t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
 
     def sql(self):
-        if not self.where:
-            return ""
-        clause_list = list()
-        extras = list()
-        for k, v in self.where.items():
-            if isinstance(v, Where):
-                v.keyword = ""
-                extras.append(f"{LINE + str(k)} ({ds_sql(v) + LINE})")
-            else:
-                if isinstance(v, (str, int, float)):
-                    v = self.get_comparison(column=k, target=v)  # type: ignore
-                if hasattr(v, "column") and v.column == TBD:  # type: ignore
-                    v.column = columnify(k)  # type: ignore
-                if isinstance(v, (Column, Qname)):
-                    v = self.get_comparison(k, v)  # type: ignore
-                clause_list.append(v)
-        return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=LINE + TAB + "AND ")}{joinmap(extras, seperator=LINE)}"""
-
-    def items(self):
-        return self.where.items()
-
-    @dataclasses.dataclass
-    class Comparison:
-        column: t.Union[
-            t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"], t.Type[TBD]
-        ]
-        target: t.Union[Statement, str, t.Type[TBD]]
-        operator: t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
-
-        def sql(self):
-            if self.column == TBD or self.column is None:
-                raise TypeError("Column argument is required")
-            if isinstance(self.target, (Column, Qname)):
-                t = ds_sql(ds_identity(self.target))
-            else:
-                t = TypeMaster.cast(self.target)
-            return f"{ds_sql(ds_identity(self.column))} {self.operator} {ds_sql(ds_identity(t))}"
+        if self.column == TBD or self.column is None:
+            raise TypeError("Column argument is required")
+        if isinstance(self.target, (Column, Qname)):
+            t = ds_sql(ds_identity(self.target))
+        else:
+            t = TypeMaster.cast(self.target)
+        return f"{ds_sql(ds_identity(self.column))} {self.operator} {ds_sql(ds_identity(t))}"
 
     @classmethod
     def get_comparison(
@@ -956,10 +970,10 @@ class Where(SQL):
         column: t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"] = TBD,
         target: Statement = None,
         operator: t.Literal["=", ">", "<", "!=", "<>", ">=", "<="] = "=",
-    ) -> "Where.Comparison":
+    ) -> "Comparison":
         if target is None:
             raise TypeError("target argument is required")
-        return cls.Comparison(
+        return cls(
             column=columnify(column), target=target, operator=operator  # type: ignore
         )
 
@@ -988,12 +1002,45 @@ class Where(SQL):
         column: t.Union[Statement, t.Type[TBD]] = TBD,
         target: Statement = None,
         invert: bool = False,
-    ) -> "Where.In":
+    ) -> "In":
         if target is None:
             raise TypeError("target argument is required")
         return cls.In(column=column, target=target, invert=invert)
 
     not_in = functools.partialmethod(is_in, invert=True)
+
+
+@dataclasses.dataclass
+class Where:
+    where: WhereLike = dataclasses.field(default_factory=dict)
+    keyword: str = "WHERE"
+
+    def __getitem__(self, key):
+        return self.where[key]
+
+    def __setitem__(self, key, value):
+        self.where[key] = value
+
+    def sql(self):
+        if not self.where:
+            return ""
+        clause_list = list()
+        extras = list()
+        for k, v in self.where.items():
+            if isinstance(v, Where):
+                v.keyword = ""
+                extras.append(f"{LINE + str(k)} ({ds_sql(v) + LINE})")
+            else:
+                if hasattr(v, "column") and v.column == TBD:  # type: ignore
+                    v.column = columnify(k)  # type: ignore
+                if isinstance(v, (str, int, float, Column, Qname)):
+                    clause_list.append(Comparison.get_comparison(column=k, target=v))  # type: ignore
+                else:
+                    clause_list.append(v)
+        return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=LINE + TAB + "AND ")}{joinmap(extras, seperator=LINE)}"""
+
+    def items(self):
+        return self.where.items()
 
 
 @dataclasses.dataclass
@@ -1028,7 +1075,7 @@ class Join(DBObject, TableObjectBase):
 
 
 @dataclasses.dataclass
-class Clauses(SQL):
+class Clauses:
     clauses: t.List = dataclasses.field(default_factory=list)
     seperator: str = LINE
 
@@ -1107,7 +1154,9 @@ def enum_type_handler(e: EnumMeta):
     AutoEnumTypeHandler.register()
 
 
-def table_to_enum(table, enum_name=None, name_column="name", value_column="value") -> EnumMeta:
+def table_to_enum(
+    table, enum_name=None, name_column="name", value_column="value"
+) -> EnumMeta:
     table = tablify(table, strict=True)
     if enum_name is None:
         enum_name = table.name
@@ -1131,10 +1180,13 @@ def name_parse(object: str) -> t.Tuple[t.Optional[str], t.List[str]]:
 def tablify(
     object,
     table_name: str = None,
-    refdata: t.Optional[t.Dict] = None,
+    reference_data: t.Optional[t.Dict] = None,
     db: Database = None,
     strict: bool = False,
+    create: bool = False,
 ):
+    if dataclasses.is_dataclass(object):
+        return tablify(type(object))
     if not isinstance(object, (Table, Qname, EnumMeta, t.Dict, RawSQL)):
         raise ValueError(
             "Only instances of str, Table, Qname, dict, and RawSQL, or subclasses of Enum are valid."
@@ -1148,10 +1200,32 @@ def tablify(
 
 @tablify.register
 def _(  # type: ignore
+    object: type,
+    table_name: str = None,
+    reference_data: t.Optional[t.Dict] = None,
+    db: Database = None,
+    strict: bool = False,
+) -> "Table":
+    if db is not None and (retrieved := db.table(object.__name__)) is not None:
+        return retrieved
+    if not dataclasses.is_dataclass(object):
+        raise ValueError(f"{type(object)} is not a supported type.")
+    return Table(
+        table_name=object.__name__,
+        column=[
+            columnify(field)
+            for field in dataclasses.fields(object)
+            if not field.metadata.get("exclude_column")
+        ],
+    )
+
+
+@tablify.register
+def _(  # type: ignore
     object: EnumMeta,
     table_name: str = None,
-    refdata: t.Optional[t.Dict] = None,
-    db: Database = None,
+    reference_data: t.Optional[t.Dict] = None,
+    db_path: t.Optional[str] = None,
     strict: bool = False,
 ) -> "Table":
     enum_type_handler(object)
@@ -1162,10 +1236,10 @@ def _(  # type: ignore
             Column(column_name="name", unique=True),
             Column(column_name="value"),
         ],
-        refdata=[
+        reference_data=[
             {"id": member, "name": member.name, "value": member.value} for member in object  # type: ignore
         ],
-        _db=db,
+        db_path=db_path,
     )
 
 
@@ -1173,28 +1247,28 @@ def _(  # type: ignore
 def _(  # type: ignore
     object: dict,
     table_name: str = None,
-    refdata: t.Optional[t.Dict] = None,
-    db: Database = None,
+    reference_data: t.Optional[t.Dict] = None,
+    db_path: t.Optional[str] = None,
     strict: bool = False,
 ) -> Table:
-    if table_name is None and "table_name" in object:
-        table_name = object.pop("table_name")
-    if table_name is None:
-        raise ValueError("table_name is required")
-    if refdata is None and "refdata" in object:
-        refdata = object.pop("refdata")
-    if db is None:
-        db = object.pop("db", None)
-    if "column" not in object and refdata is not None:
+    kwargs = {
+        "table_name": table_name
+        if table_name is not None
+        else object.pop("table_name", None),
+        "reference_data": reference_data
+        if reference_data is not None
+        else object.pop("reference_data", None),
+        "db_path": db_path if db_path is not None else object.pop("db_path", None),
+        "constraints": object.pop("constraints", None),
+    }
+    if "column" not in object and kwargs.get("reference_data") is not None:
         object = {
             **{"id": ID_COLUMN},
-            **{k: type(v) for k, v in listify(refdata)[0].items()},
+            **{k: type(v) for k, v in listify(kwargs.get("reference_data"))[0].items()},
         }
     return Table(
-        table_name=table_name,
+        **{k: v for k, v in kwargs.items() if v is not None},
         column=[Column.from_tuple(i) for i in object.items()],
-        refdata=refdata,
-        _db=db,
     )
 
 
@@ -1202,13 +1276,11 @@ def _(  # type: ignore
 def _(  # type: ignore
     object: str,
     table_name: str = None,
-    refdata: t.Optional[t.Dict] = None,
-    db: Database = None,
+    reference_data: t.Optional[t.Dict] = None,
+    db_path: Database = None,
     strict: bool = False,
 ) -> t.Union[Qname, Table]:
-    if db is None:
-        db = Database()
-    if (table := db.table(object)) is not None:
+    if (table := Database().table(object)) is not None:
         return table
     elif strict:
         raise ValueError("str type object cannot represent a table in strict contexts.")
@@ -1218,14 +1290,16 @@ def _(  # type: ignore
         schema_name, table_name = parts
     if length == 1:
         table_name = parts[0]
-    return Qname(alias=alias, schema_name=schema_name, table_name=table_name, db=db)
+    return Qname(
+        alias=alias, schema_name=schema_name, table_name=table_name, db_path=db_path
+    )
 
 
 @functools.singledispatch
 def columnify(object):
     if object != TBD and not isinstance(object, (Column, Qname, RawSQL)):
         raise ValueError(
-            "Only instances of str, Column, Qname, TBD, and RawSQL are valid."
+            "Only instances of str, Column, Qname, TBD, dataclasses.Field, and RawSQL are valid."
         )
     return object
 
@@ -1248,6 +1322,28 @@ def _(object: str) -> Qname:  # type: ignore
     )
 
 
+@columnify.register
+def _(object: dataclasses.Field) -> Column:  # type: ignore
+    parameters = inspect.signature(Column).parameters.keys()
+    default = (
+        object.default
+        if object.default != dataclasses.MISSING
+        else object.default_factory
+        if object.default_factory != dataclasses.MISSING
+        else None
+    )
+    python_type = (
+        object.type
+        if t.get_origin(object.type) is None
+        else [t for t in t.get_args(object.type) if t is not None][0]
+    )
+    kwargs = {
+        **{"column_name": object.name, "python_type": python_type, "default": default},
+        **{k: v for k, v in object.metadata.items() if k in parameters},
+    }
+    return Column(**kwargs)
+
+
 def listify(o: t.Any):
     return o if isinstance(o, list) else [o]
 
@@ -1258,18 +1354,18 @@ def joinmap(o, f: t.Callable = ds_name, seperator: str = ", ") -> str:
 
 
 @functools.singledispatch
-def table_ident(object: str) -> Qname:
+def table_ident(object) -> t.Any:
+    return object  # type: ignore
+
+
+@table_ident.register
+def _(object: str) -> Qname:
     return tablify(object)  # type: ignore
 
 
 @table_ident.register
 def _(object: Table) -> Qname:  # type: ignore
     return object.identity
-
-
-@table_ident.register
-def _(object: Qname) -> Qname:
-    return object
 
 
 def same_table(

@@ -12,5 +12,4 @@ def test_all_combinations():
     r = RawSQL(text="[bobsScheme].[Bob]")
     items = [t, q, s, r]
     for t in product(items, items):
-        print([type(table) for table in t])
         assert same_table(*list(t))

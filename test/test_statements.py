@@ -1,4 +1,4 @@
-from dsorm.dsorm import columnify
+from dsorm.dsorm import columnify, table_ident
 import pytest
 from dsorm import Column, Database, Insert, Qname, Statement, Table
 

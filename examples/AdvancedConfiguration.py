@@ -11,7 +11,7 @@ For these situations two decorators are provided that allow you to push the
     operations of setting your config and instantiating your database to just
     before and just after the first connection.
 
-You have seen in previous examples the Database().init_db() method that creates
+You have seen in previous examples the Database().initialize() method that creates
     all tables. In this example you will also see the Pragma object which
     allows you to set SQLite3 runtime configurations called pragma.
 """
@@ -30,14 +30,14 @@ def db_setup(db):
 
 # The post_connect wrapper is called once after the first connection is made
 @post_connect()
-def build(db):
+def build():
     # This will set pragma and create all tables.
     # The objects are defined further down
     # Using this hook pushes instantiation to first connection
-    db.init_db()
+    db.initialize()
 
 
-# This pragma object will automatically be picked up by init_db and run.
+# This pragma object will automatically be picked up by initialize and run.
 # Note that because the post_connect wrapper sets up the 'build' function
 #   to run just after first connect we can create pragma after build.
 conf = Pragma.from_dict(

@@ -1,4 +1,7 @@
-from dsorm import ID_COLUMN, Database, Table, TypeMaster, pickle_type_handler
+from dsorm.dsorm import Database
+from dsorm import ID_COLUMN, Table, TypeMaster, pickle_type_handler
+
+db = Database.memory()
 
 # See: https://docs.python.org/3/library/pickle.html
 # As the documentation says: Warning The pickle module is not secure. Only unpickle data you trust.
@@ -6,26 +9,22 @@ from dsorm import ID_COLUMN, Database, Table, TypeMaster, pickle_type_handler
 # you must first call:
 TypeMaster.allow_pickle()
 
-db = Database.from_dict(
-    {
-        "tables": {
-            "config": {
-                "id": ID_COLUMN,
-                "user_id": int,
-                "config": dict,
-            },
-        }
-    }
+config_table = Table.from_object(
+    table_name="config",
+    object={
+        "id": ID_COLUMN,
+        "user_id": int,
+        "config": dict,
+    },
 )
-
-stmt = db.table("config").insert(
+stmt = config_table.insert(
     data={"user_id": 1, "config": {"setting_1": 1, "setting_2": "red"}},
 )
 print(stmt.sql())
 # INSERT INTO [config] (user_id, config)
 # VALUES ('1', x'80049525000000000000007d94288c0973657474696e675f31944b018c0973657474696e675f32948c0372656494752e')
 stmt.execute()
-print(db.table("config").select().execute())
+print(config_table.select().execute())
 # [{'id': 1, 'user_id': 1, 'config': {'setting_1': 1, 'setting_2': 'red'}}]
 
 

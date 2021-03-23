@@ -15,7 +15,7 @@ def test_none_path():
         Database().connect()
 
 
-def test_init_db():
+def test_initialize():
     p = Pragma.from_dict({"foreign_keys": 1})
     assert p[0].sql() == "PRAGMA foreign_keys=1"
 

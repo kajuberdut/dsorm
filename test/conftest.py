@@ -51,12 +51,12 @@ def db(db_path):
 @pytest.fixture(scope="function")
 def table_setup(db):
     test_table = Table(
+        db_path=":memory:",
         table_name="test",
         column=[
             Column(column_name="test_id", python_type=int, pkey=True),
             Column(column_name="stuff", unique=True, nullable=False),
-        ],
-        _db=db,
+        ]
     )
     db.execute(test_table.sql())
     return test_table

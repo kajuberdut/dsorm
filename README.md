@@ -119,7 +119,7 @@ For information about cloning and dev setup see: [Contributing](#Contributing)
 Here is an example showing basic usage.
 
 ```python
-from dsorm import ID_COLUMN, Column, Database, Table, Where
+from dsorm import ID_COLUMN, Column, Database, Table, Comparison
 
 person = Table(
     table_name="person",
@@ -145,7 +145,7 @@ assert person2.sql() == person.sql()
 
 # See Database example for more details about the Database object
 # the .memory() constructor is equivilent to Database(db_path=":memory:", is_default=True)
-Database.memory().init_db()  # This creates all tables
+Database.memory().initialize()  # This creates all tables
 
 # Tables have insert, select, and delete methods.
 # These return a Statement
@@ -166,7 +166,7 @@ stmt.execute()
 
 # select returns a list of dicts of rows matching the where
 doe_family = person.select(
-    where={"first_name": Where.like(target="J%n%")},
+    where={"first_name": Comparison.like(target="J%n%")},
     column=[
         "id",
         "first_name || ' ' || last_name AS full_name",  # Note that the columns can be sql

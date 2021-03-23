@@ -7,7 +7,7 @@ It also includes an additional example of custom type handling
 from enum import IntEnum
 from random import randint
 
-from dsorm import Column, Database, Table, Where
+from dsorm import Column, Comparison, Database, Table, Where
 
 
 class Gender(IntEnum):
@@ -28,7 +28,7 @@ person = Table(
     ],
 )
 
-Database.memory().init_db()
+Database.memory().initialize()
 
 data = [{"gender": Gender(randint(1, 2)), "age": randint(1, 99)} for i in range(10)]
 
@@ -49,11 +49,11 @@ print(stmt.where)
 
 # Let's use this as an example where we have different criteria groups
 stmt.where[""] = Where(  # Empty key since we don't want to start with "AND" or "OR"
-    where={"gender": Gender.MALE, "age": Where.greater_than_or_equal(target=65)}
+    where={"gender": Gender.MALE, "age": Comparison.greater_than_or_equal(target=65)}
 )
 # Since modern python dictionaries keep insert order we can just do these in order
 stmt.where["OR"] = Where(
-    where={"gender": Gender.FEMALE, "age": Where.greater_than_or_equal(target=67)}
+    where={"gender": Gender.FEMALE, "age": Comparison.greater_than_or_equal(target=67)}
 )
 
 # Example of a complex where clause:

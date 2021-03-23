@@ -1,33 +1,33 @@
 import pytest
-from dsorm import Where
+from dsorm import Where, Comparison
 from dsorm.dsorm import columnify
 
 
 def test_comparison():
-    w = Where({"column_name": Where.get_comparison(target="thingy")})
+    w = Where({"column_name": Comparison.get_comparison(target="thingy")})
     assert w.sql() == "WHERE [column_name] = 'thingy'"
 
 
 def test_comparison_no_target():
     with pytest.raises(TypeError):
-        w = Where.get_comparison()
+        w = Comparison.get_comparison()
         w.sql()
 
 
 def test_comparison_no_column():
     with pytest.raises(TypeError):
-        w = Where.get_comparison(target="thingy")
+        w = Comparison.get_comparison(target="thingy")
         w.sql()
 
 
 def test_in():
-    w = Where.is_in(column="value", target=[1, 2])
+    w = Comparison.is_in(column="value", target=[1, 2])
     assert w.sql() == "value  IN (1, 2)"
 
 
 def test_in_no_target():
     with pytest.raises(TypeError):
-        w = Where.is_in()
+        w = Comparison.is_in()
         w.sql()
 
 
