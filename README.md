@@ -152,17 +152,19 @@ print(person.sql())
 # Tables have insert, select, and delete methods which return subclasses of dsorm.Statement
 stmt = person.insert(
     data=[
-        {"first_name": "Jane", "last_name": "Doe", "team": Team.RED},
         {"first_name": "John", "last_name": "Doe", "team": Team.BLUE},
     ],
 )
 
 # Statements can be examined with .sql method
 print(stmt.sql())
-# INSERT INTO [Person] (first_name, last_name, team) VALUES ('Jane', 'Doe', 1), ('John', 'Doe', 2)
+# INSERT INTO [Person] (first_name, last_name, team) VALUES ('John', 'Doe', 2)
 
 # or executed with .execute()
 stmt.execute()
+
+# Subclasses of DataClassTable inherit a save method
+Jane = Person(first_name="Jane", last_name="Doe", team=Team.RED).save()
 
 # Select returns a list of dicts of rows matching the where
 doe_family = person.select(
@@ -171,16 +173,16 @@ doe_family = person.select(
 
 print(doe_family)
 # [
-#     {'id': 1, 'first_name': 'Jane', 'last_name': 'Doe', 'team': <Team.RED: 1>
+#     {'id': 1, 'first_name': 'John', 'last_name': 'Doe', 'team': <Team.BLUE: 2>
 #     },
-#     {'id': 2, 'first_name': 'John', 'last_name': 'Doe', 'team': <Team.BLUE: 2>
+#     {'id': 2, 'first_name': 'Jane', 'last_name': 'Doe', 'team': <Team.RED: 1>
 #     }
 # ]
 
 # And Delete
 person.delete(where={"id": doe_family[0]["id"]}).execute()
-print(person.select(column=["first_name"]).execute())
-# [{'first_name': 'John'}]
+print(person.select(column=["id", "first_name"]).execute())
+# [{'id': '2', 'first_name': 'Jane'}]
 
 ```
 

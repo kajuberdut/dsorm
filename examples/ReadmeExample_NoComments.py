@@ -1,7 +1,7 @@
 import dataclasses
 from enum import Enum
 
-from dsorm import Database, DataClassTable, make_table
+from dsorm import Comparison, Database, DataClassTable, make_table
 
 db = Database.memory()
 
@@ -23,13 +23,19 @@ class Person(DataClassTable):
 
 person = db.table("Person")
 
-
-person.insert(
+stmt = person.insert(
     data=[
-        {"first_name": "Jane", "last_name": "Doe", "team": Team.RED},
         {"first_name": "John", "last_name": "Doe", "team": Team.BLUE},
     ],
 ).execute()
 
-person.delete(where={"first_name": "John"}).execute()
-print(person.select(column=["first_name"]).execute())
+Jane = Person(first_name="Jane", last_name="Doe", team=Team.RED).save()
+
+person.delete(
+    where={
+        "id": person.select(
+            where={"first_name": Comparison.like(target="J%n%")},
+        ).execute()[0]["id"]
+    }
+).execute()
+print(person.select(column=["id", "first_name"]).execute())
