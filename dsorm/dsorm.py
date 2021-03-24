@@ -363,6 +363,12 @@ class DataProvider(metaclass=ABCMeta):  # pragma: no cover
 @dataclasses.dataclass
 class DataClassTable(DataProvider, DBObject):
     _table: t.ClassVar[t.Optional["Table"]] = None
+    id: t.Optional[int] = dataclasses.field(
+        default=None,
+        init=False,
+        repr=False,
+        metadata={"column_name": "id", "python_type": int, "pkey": True},
+    )
 
     def data(self) -> t.Dict:
         def get_name(field: dataclasses.Field):
@@ -1181,7 +1187,7 @@ def tablify(
     object,
     table_name: str = None,
     reference_data: t.Optional[t.Dict] = None,
-    db: Database = None,
+    db_path: Database = None,
     strict: bool = False,
     create: bool = False,
 ):
@@ -1203,11 +1209,13 @@ def _(  # type: ignore
     object: type,
     table_name: str = None,
     reference_data: t.Optional[t.Dict] = None,
-    db: Database = None,
+    db_path: str = None,
     strict: bool = False,
 ) -> "Table":
-    if db is not None and (retrieved := db.table(object.__name__)) is not None:
-        return retrieved
+    if db_path is not None:
+        db = Database(db_path=db_path)
+        if (retrieved := db.table(object.__name__)) is not None:
+            return retrieved
     if not dataclasses.is_dataclass(object):
         raise ValueError(f"{type(object)} is not a supported type.")
     return Table(
@@ -1392,6 +1400,11 @@ def same_table(
     elif re.sub(r"\s+", " ", a_str).strip() == re.sub(r"\s+", " ", b_str).strip():
         match = True
     return match
+
+
+def make_table(cls):
+    tablify(cls)
+    return cls
 
 
 def hook_setter(run_once=True, attribute=""):  # pragma: no cover
