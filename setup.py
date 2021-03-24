@@ -14,7 +14,7 @@ setup(
     version="0.0.8",
     author="Patrick Shechet",
     author_email="patrick.shechet@gmail.com",
-    description=("A Darned Simple ORM"),
+    description=("A Data Structure ORM"),
     license="BSD",
     packages=find_packages(),
     long_description=README,

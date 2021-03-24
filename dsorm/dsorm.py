@@ -1,5 +1,5 @@
 """
-D.S.O: Darned Simple ORM
+dsORM: Data Structure ORM
 This module provides some abstractions of SQL concepts into Object Relation Mapping models.
 """
 

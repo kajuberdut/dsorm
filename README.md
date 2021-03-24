@@ -7,7 +7,7 @@
 ***
 ***
 *** To avoid retyping too much info. Do a search and replace for the following:
-*** kajuberdut, dsORM, twitter_handle, patrick.shechet@gmail.com, Darned Simple ORM, A single file ORM for SQLite in Python
+*** kajuberdut, dsORM, twitter_handle, patrick.shechet@gmail.com, Data Structure ORM, A single file ORM for SQLite in Python
 -->
 
 
@@ -36,7 +36,7 @@
     <img src="https://github.com/kajuberdut/dsorm/blob/main/images/logo.png?raw=true" alt="Logo" width="80" height="80">
   </a>
 
-  <h3 align="center">Darned Simple ORM</h3>
+  <h3 align="center">Data Structure ORM</h3>
 
   <p align="center">
     A single file ORM for SQLite in Python
@@ -72,12 +72,12 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-Darned Simple ORM (dsORM) is a little bit different from other ORMs.
-The typical ORM approach is to have developers "map" their classes to a database and then do "magic" to make that database work.
-dsORM aims instead to map database components into easy to use Python objects which can be leveraged by your classes for database interactions.
+Data Structure ORM (dsORM) a tiny, extensible ORM that builds off of Python's built in data structures.
+dsORM can convert simple data structures such as dictionaries, enums, and dataclasses into tables.
+For fine control you can craft tables, columns, and constraints from simple base classes.
 
-If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is simple, the entire functional code is in a single file which is currently under 1,500 lines.
-For comparison, PeeWee, a fairly small ORM is 7,723 lines long in it's main file and that doesn't contain all of it's functional code.
+If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is much simpler. The entire functional code is in a single file which is currently under 1,500 lines.
+For comparison, PeeWee, a fairly small ORM is 7,723 lines long in it's main file and that doesn't contain all functional code.
 SQLAlchemy as of this writing contains 343,975 lines of Python code (though admittedly it dwarfs dsORM's feature set.)
 
 
@@ -91,7 +91,6 @@ SQLAlchemy as of this writing contains 343,975 lines of Python code (though admi
 ### Should I use this?
 #### You should **not** use dsORM if:
 * You can't work with SQLite
-* You don't have any idea how SQL works and need maximal hand holding
 * You want something that enforces best practices
 
 #### You should use dsORM if:
