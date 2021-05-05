@@ -72,13 +72,13 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-Data Structure ORM (dsORM) a tiny, extensible ORM that builds off of Python's built in data structures.
-dsORM can convert simple data structures such as dictionaries, enums, and dataclasses into tables.
-For fine control you can craft tables, columns, and constraints from simple base classes.
+Data Structure ORM (dsORM) a tiny, extensible ORM that leverages Python's built in data structures.
+dsORM easily converts dictionaries, enums, and dataclasses into tables.
+For fine control you can craft tables, columns, and constraints from provided base classes.
 
 If SQLAlchemy's expression language comes to mind, yes, this is a bit like that. But dsORM is much simpler. The entire functional code is in a single file which is currently under 1,500 lines.
 For comparison, PeeWee, a fairly small ORM is 7,723 lines long in it's main file and that doesn't contain all functional code.
-SQLAlchemy as of this writing contains 343,975 lines of Python code (though admittedly it dwarfs dsORM's feature set.)
+SQLAlchemy as of this writing contains 343,975 lines of Python code (admittedly, it dwarfs dsORM's feature set.)
 
 
 ### Designed for easy integration / modification
