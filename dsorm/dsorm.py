@@ -115,7 +115,7 @@ class Database:
 
     def execute(
         self,
-        command: t.Union[str, "SQL"],
+        command: t.Union[str, "SQL", "Statement"],
         parameters: t.Union[t.Tuple, t.Dict] = None,
         commit: bool = True,
     ):
@@ -143,6 +143,16 @@ class Database:
 
     def register(self, object):
         self.information_schema[type(object).__name__][object.name] = object
+
+    def table_exists(self, table_name: str) -> bool:
+        return (
+            len(
+                self.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';"
+                )
+            )
+            > 0
+        )
 
     @functools.lru_cache
     def id(
@@ -253,6 +263,21 @@ class DateHandler(TypeHandler):
             return datetime.fromtimestamp(value)
 
 
+class BoolHandler(TypeHandler):
+    sql_type: str = "INT"
+    python_type: type = datetime
+
+    @staticmethod
+    def p2s(value: bool) -> t.Union[int, float, str, bytes]:
+        """ Convert datetime to timestamp """
+        return str(int(value))
+
+    @staticmethod
+    def s2p(value) -> t.Any:
+        if value is not None:
+            return bool(value)
+
+
 @staticmethod
 def obj_2_sql(value: datetime) -> str:
     """ Convert datetime to timestamp """
@@ -262,7 +287,7 @@ def obj_2_sql(value: datetime) -> str:
 @staticmethod
 def sql_2_obj(value) -> t.Any:
     if value is not None:
-        return pickle.loads(bytes(value))
+        return pickle.loads(bytes.fromhex(value))
 
 
 class PickleHandler(TypeHandler):
@@ -284,6 +309,7 @@ class TypeMaster:
         list: PickleHandler,
         dict: PickleHandler,
         tuple: PickleHandler,
+        bool: BoolHandler,
     }
     _allow_pickle: bool = False
 
@@ -698,6 +724,19 @@ class Delete(DBObject, WhereObjectBase, TableObjectBase):
 
 
 @dataclasses.dataclass
+class Drop(DBObject, TableObjectBase):
+    def drop_sql(self):
+        self["DROP"] = "DROP TABLE"
+
+    def table_sql(self):
+        self["TABLE"] = ds_sql(ds_identity(self.table))
+
+    class Order(Enum):
+        DROP = 1
+        TABLE = 2
+
+
+@dataclasses.dataclass
 class Column(Statement, DBObject):
     column_name: str = ""
     python_type: type = str
@@ -837,6 +876,7 @@ class Table(Statement, DBObject):
     schema_name: t.Optional[str] = None
     alias: t.Optional[str] = None
     reference_data: dataclasses.InitVar[t.Optional[t.Union[t.Dict, t.List]]] = None
+    temp: bool = False
 
     @staticmethod
     def from_object(
@@ -869,7 +909,7 @@ class Table(Statement, DBObject):
             )
 
     def create_sql(self):
-        return f"CREATE TABLE IF NOT EXISTS {self.name}"
+        return f"CREATE {'TEMPORARY ' if self.temp else ''}TABLE IF NOT EXISTS {self.name}"
 
     def column_sql(self):
         return f"{joinmap(self.column, ds_sql)}"
@@ -933,6 +973,11 @@ class Table(Statement, DBObject):
 
     def delete(self, where: WhereLike) -> Delete:
         return Delete(table=self, where=where, db_path=self.db_path)
+
+    def drop(self, confirm: bool = False):
+        if self.temp is False and not confirm:
+            raise OperationalError("Cannot drop a non-temporary table without confirm flag set to True.")
+        return Drop(table=self)
 
     def __repr__(self):
         return ds_sql(ds_identity(self.identity))

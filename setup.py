@@ -11,7 +11,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name="dsorm",
-    version="0.0.8",
+    version="0.0.9",
     author="Patrick Shechet",
     author_email="patrick.shechet@gmail.com",
     description=("A Data Structure ORM"),

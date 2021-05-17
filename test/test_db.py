@@ -15,6 +15,12 @@ def test_none_path():
         Database().connect()
 
 
+def test_memory_method():
+    m1 = Database.memory()
+    m2 = Database(db_path=":memory:")
+    assert m1.c == m2.c
+
+
 def test_initialize():
     p = Pragma.from_dict({"foreign_keys": 1})
     assert p[0].sql() == "PRAGMA foreign_keys=1"
