@@ -74,7 +74,7 @@ class Database:
         self._c = self.connection_pool.get(self.db_path)  # type: ignore
         if self._c is None:
             try:
-                self.connection_pool[self.db_path] = sqlite3.connect(self.db_path)  # type: ignore
+                self.connection_pool[self.db_path] = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)  # type: ignore
                 self._c = self.connection_pool[self.db_path]  # type: ignore
                 self._c.row_factory = self.dict_factory
             except TypeError:
@@ -95,7 +95,7 @@ class Database:
             del self.connection_pool[self.db_path]
 
     def initialize(self):
-        """ Create basic db objects. """
+        """Create basic db objects."""
         [
             [o.execute() for o in self.information_schema[t].values()]
             for t in ["Pragma", "Table"]
@@ -119,19 +119,36 @@ class Database:
         parameters: t.Union[t.Tuple, t.Dict] = None,
         commit: bool = True,
     ):
-        """ Execute a sql command with optional parameters """
+        """Execute a sql command with optional parameters"""
         with self.cursor() as cur:
+            execute = cur.execute
             try:
                 if ";" in (sql := ds_sql(command)):
-                    cur.executescript(sql)
+                    execute = cur.executescript
                 else:
-                    cur.execute(*[i for i in [sql, parameters] if i is not None])
-            except (OperationalError, ValueError) as e:
-                if (match := re.search(r"no such table:\s(.*)", str(e))) :
+                    if parameters is None and hasattr(command, "data"):
+                        parameters = command.data
+                    if isinstance(parameters, list):
+                        if len(parameters) == 1:
+                            parameters = parameters[0]
+                        else:
+                            execute = cur.executemany
+                execute(
+                    *[
+                        i
+                        for i in [
+                            sql,
+                            parameters,
+                        ]
+                        if i is not None
+                    ]
+                )
+            except (OperationalError, ValueError, TypeError) as e:
+                if match := re.search(r"no such table:\s(.*)", str(e)):
                     self.table(match.group(1)).execute()
                     self.execute(command=command, parameters=parameters, commit=commit)
                 else:
-                    print(f"Syntax error in: {ds_sql(command)}\n\nError: {str(e)}")
+                    print(f"Syntax error in: {sql}\n\nError: {str(e)}")
                     raise
             if commit:
                 self.commit()
@@ -181,14 +198,14 @@ class TypeHandlerABC(metaclass=ABCMeta):  # pragma: no cover
 
     @staticmethod
     @abstractmethod
-    def p2s(value) -> t.Union[int, float, str, bytes]:
-        """ This method should return a value that would be valid "as is" in a sql statement. """
+    def to_sql(value) -> t.Union[int, float, str, bytes]:
+        "This static method should convert a Python data type into one of SQLite’s supported types."
         raise NotImplementedError("Not implemented yet.")
 
     @staticmethod
     @abstractmethod
-    def s2p(value) -> t.Any:
-        """ This method should handle converting a SQLite datatype to a Python datatype. """
+    def to_python(value) -> t.Any:
+        "This static method should convert a bytestring into the appropriate Python data type."
         raise NotImplementedError("Not implemented yet.")
 
 
@@ -196,120 +213,100 @@ class TypeHandler(TypeHandlerABC):
     @classmethod
     def register(cls):
         if (
-            isinstance(getattr_static(cls, "p2s"), staticmethod)
-            and isinstance(getattr_static(cls, "s2p"), staticmethod)
+            isinstance(getattr_static(cls, "to_sql"), staticmethod)
+            and isinstance(getattr_static(cls, "to_python"), staticmethod)
             and len(cls.__abstractmethods__) == 0  # type: ignore
         ):  # type: ignore
             TypeMaster.register(cls)
         else:
-            raise TypeError("Type Handlers must have static methods s2p and p2s.")
-
-
-class StrHandler(TypeHandler):
-    sql_type: str = "TEXT"
-    python_type: type = str
-
-    @staticmethod
-    def p2s(value) -> t.Union[int, float, str, bytes]:
-        """ surround with single quotes to embed string literals in sql """
-        return f"'{str(value)}'"
-
-    @staticmethod
-    def s2p(value) -> t.Any:
-        return str(value)
-
-
-class IntHandler(TypeHandler):
-    sql_type: str = "INTEGER"
-    python_type: type = int
-
-    @staticmethod
-    def p2s(value) -> t.Union[int, float, str, bytes]:
-        """ surround with single quotes to embed string literals in sql """
-        return str(value)
-
-    @staticmethod
-    def s2p(value) -> t.Any:
-        if value is not None:
-            return int(value)
-
-
-class FloatHandler(TypeHandler):
-    sql_type: str = "REAL"
-    python_type: type = float
-
-    @staticmethod
-    def p2s(value) -> t.Union[int, float, str, bytes]:
-        return str(value)
-
-    @staticmethod
-    def s2p(value) -> t.Any:
-        if value is not None:
-            return float(value)
+            raise TypeError(
+                "Type Handlers must have static methods to_python and to_sql."
+            )
 
 
 class DateHandler(TypeHandler):
-    sql_type: str = "INT"
+    sql_type: str = "INTDATE"
     python_type: type = datetime
 
     @staticmethod
-    def p2s(value: datetime) -> t.Union[int, float, str, bytes]:
-        """ Convert datetime to timestamp """
+    def to_sql(value: datetime) -> t.Union[int, float, str, bytes]:
+        """Convert datetime to timestamp"""
         return str(value.timestamp())
 
     @staticmethod
-    def s2p(value) -> t.Any:
+    def to_python(value) -> t.Any:
         if value is not None:
             return datetime.fromtimestamp(value)
 
 
-class BoolHandler(TypeHandler):
-    sql_type: str = "INT"
-    python_type: type = datetime
-
-    @staticmethod
-    def p2s(value: bool) -> t.Union[int, float, str, bytes]:
-        """ Convert datetime to timestamp """
-        return str(int(value))
-
-    @staticmethod
-    def s2p(value) -> t.Any:
-        if value is not None:
-            return bool(value)
-
-
-@staticmethod
-def obj_2_sql(value: datetime) -> str:
-    """ Convert datetime to timestamp """
-    return f"x'{pickle.dumps(value).hex()}'"
-
-
-@staticmethod
-def sql_2_obj(value) -> t.Any:
-    if value is not None:
-        return pickle.loads(bytes.fromhex(value))
-
-
 class PickleHandler(TypeHandler):
     sql_type: str = "BLOB"
-    p2s = obj_2_sql
-    s2p = sql_2_obj
+
+    @staticmethod
+    def to_sql(value: datetime) -> str:
+        return f"x'{pickle.dumps(value).hex()}'"
+
+    @staticmethod
+    def to_python(value) -> t.Any:
+        if value is not None:
+            return pickle.loads(bytes.fromhex(value))
 
 
 def pickle_type_handler(object: type):
     type(object.__name__, (PickleHandler,), {"python_type": object}).register()
 
 
+class Caster:
+    """Casters are used in place of handlers where no conversion is needed.
+    Casters provide Python Type to SQL Type lookup.
+    Should provide a quote_escape static method where appropriate.
+    """
+
+    @classmethod
+    def register(cls):
+        if not hasattr(cls, "sql_type") and hasattr(cls, "python_type"):
+            raise AttributeError(
+                "Subclasses of Caster must define sql_type and python_Type class attributes."
+            )
+        TypeMaster.register(cls)
+
+
+class StrCaster(Caster):
+    sql_type: str = "TEXT"
+    python_type: type = str
+
+    @staticmethod
+    def quote_escape(value) -> str:
+        return f"""'{value.strip("'")}'"""
+
+
+class IntCaster(Caster):
+    sql_type: str = "INTEGER"
+    python_type: type = int
+
+    @staticmethod
+    def quote_escape(value) -> str:
+        return str(value)
+
+
+class FloatHandler(Caster):
+    sql_type: str = "REAL"
+    python_type: type = float
+
+    @staticmethod
+    def quote_escape(value) -> str:
+        return str(value)
+
+
 class TypeMaster:
-    type_handlers: t.Dict[t.Type, t.Type[TypeHandler]] = {
-        str: StrHandler,
-        int: IntHandler,
-        float: FloatHandler,
+    type_handlers: t.Dict[t.Type, t.Union[t.Type[TypeHandler], t.Type[Caster]]] = {
         datetime: DateHandler,
         list: PickleHandler,
         dict: PickleHandler,
         tuple: PickleHandler,
-        bool: BoolHandler,
+        str: StrCaster,
+        int: IntCaster,
+        float: FloatHandler,
     }
     _allow_pickle: bool = False
 
@@ -319,6 +316,10 @@ class TypeMaster:
 
     @classmethod
     def register(cls, handler: t.Type[TypeHandler]) -> None:
+        if hasattr(handler, "to_sql") and callable(getattr(handler, "to_sql")):
+            sqlite3.register_adapter(handler.python_type, handler.to_sql)
+        if hasattr(handler, "to_python") and callable(getattr(handler, "to_python")):
+            sqlite3.register_converter(handler.sql_type, handler.to_python)
         cls.type_handlers[handler.python_type] = handler  # type: ignore
 
     @classmethod
@@ -334,7 +335,10 @@ class TypeMaster:
     def cast(cls, o) -> str:
         if isinstance(o, Column):
             return ds_sql(ds_identity(o))
-        return cls.get(type(o)).p2s(o)
+        if hasattr((caster := cls.get(type(o))), "quote_escape"):
+            return caster.quote_escape(o)
+        else:
+            return o
 
     def __getitem__(self, key: type) -> t.Type[TypeHandler]:
         return self.type_handlers[key]
@@ -512,6 +516,8 @@ class Statement:
         return " "
 
     def sql(self) -> str:
+        if hasattr(self, "prep"):
+            self.prep()
         for i in self.Order:
             if i.name.startswith("KW_"):
                 self.components[i] = KW[i.name.split("_")[1]]
@@ -581,10 +587,10 @@ class Insert(DBObject, TableObjectBase):
     data: t.Optional[t.Union[t.Dict, t.List, DataProvider]] = dataclasses.field(
         default_factory=dict
     )
-    _prepared_data: t.Optional[t.List] = None
     replace: bool = False
     column: t.List = dataclasses.field(default_factory=list)  # type: ignore
     _column: t.List = dataclasses.field(init=False, repr=False)
+    skip_defaults: bool = False
 
     @property
     def column(self):
@@ -598,17 +604,16 @@ class Insert(DBObject, TableObjectBase):
         if isinstance(self.data, DataProvider):
             self.data = self.data.data()
 
-    def prepared_data(self):
-        if self.data and self._prepared_data is None:
-            self._prepared_data = [self.data_prep(data=d) for d in listify(self.data)]
-        return self._prepared_data
+    def prep(self):
+        if self.data is not None:
+            self.data = (
+                self.data
+                if self.skip_defaults
+                else [self.add_default(data=d) for d in listify(self.data)]
+            )
 
-    def data_prep(self, data: t.Dict) -> t.Dict:
-        """Returns a dictionary ready for use in values statment.
-        Column order ensures multiple value rows have the same order.
-        Adds default values for missing items where column.default_sig.
-        Applies quoting rules to values to make them SQL ready
-        """
+    def add_default(self, data: t.Dict) -> t.Dict:
+        "Adds default values for missing items where column.default_sig."
         result = dict()
         for c in self.column:
             if (value := data.get(c.name)) is None:
@@ -618,7 +623,7 @@ class Insert(DBObject, TableObjectBase):
                     else:
                         value = c.default()
             if value is not None:
-                result[c.name] = str(TypeMaster.cast(value))
+                result[c.name] = value
         return result
 
     def insert_sql(self):
@@ -628,16 +633,14 @@ class Insert(DBObject, TableObjectBase):
         return self.table.identity
 
     def column_sql(self):
-        if self.data is None or (d := self.prepared_data()) is None:
+        if self.data is None:
             self["COLUMN"] = "DEFAULT VALUES"
         else:
-            self["COLUMN"] = f"({', '.join(d[0].keys())})"
+            self["COLUMN"] = f"({', '.join(self.data[0].keys())})"
 
     def values_sql(self):
         if self.data is not None:
-            self[
-                "VALUES"
-            ] = f"""VALUES {", ".join([f"({', '.join(d.values())})" for d in self.prepared_data()])}"""
+            self["VALUES"] = f"VALUES ({':'+', :'.join(self.data[0].keys())})"
 
     class Order(Enum):
         INSERT = 1
@@ -653,11 +656,6 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
 
     def __post_init__(self):
         self.column = [columnify(c) for c in self.column]
-        self.key_casters = {
-            c.name: TypeMaster.get(c.python_type).s2p  # type: ignore
-            for c in self.column
-            if hasattr(c, "name")
-        }
         self["JOIN"] = Clauses()
 
     def select_sql(self):
@@ -670,9 +668,7 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
         return self.key_casters.get(column_name, lambda x: x)(value)
 
     def execute(self) -> t.Optional[t.List]:
-        return [
-            {k: self.cast(k, v) for k, v in d.items()} for d in self.db.execute(self)
-        ]
+        return self.db.execute(self)
 
     def add_column(self, column: t.Union[t.List, str, "Column"]) -> None:
         [self.column.append(columnify(c)) for c in listify(column)]
@@ -787,7 +783,7 @@ class Column(Statement, DBObject):
     @property
     def identity(self):
         ident = Qname(column_name=self.column_name)
-        if (table_ident := self.table_identity) :
+        if table_ident := self.table_identity:
             ident = table_ident + ident
         return ident
 
@@ -909,7 +905,9 @@ class Table(Statement, DBObject):
             )
 
     def create_sql(self):
-        return f"CREATE {'TEMPORARY ' if self.temp else ''}TABLE IF NOT EXISTS {self.name}"
+        return (
+            f"CREATE {'TEMPORARY ' if self.temp else ''}TABLE IF NOT EXISTS {self.name}"
+        )
 
     def column_sql(self):
         return f"{joinmap(self.column, ds_sql)}"
@@ -976,7 +974,9 @@ class Table(Statement, DBObject):
 
     def drop(self, confirm: bool = False):
         if self.temp is False and not confirm:
-            raise OperationalError("Cannot drop a non-temporary table without confirm flag set to True.")
+            raise OperationalError(
+                "Cannot drop a non-temporary table without confirm flag set to True."
+            )
         return Drop(table=self)
 
     def __repr__(self):
@@ -1175,21 +1175,21 @@ def enum_type_handler(e: EnumMeta):
     ):
 
         @staticmethod
-        def p2s(value) -> str:
+        def to_sql(value) -> str:
             return str(value.value)
 
         @staticmethod
-        def s2p(value):
+        def to_python(value):
             return e(int(value))
 
     else:
 
         @staticmethod
-        def p2s(value) -> str:
+        def to_sql(value) -> str:
             return str(enum_to_id(value))
 
         @staticmethod
-        def s2p(value) -> t.Any:
+        def to_python(value) -> t.Any:
             return id_to_enum_member(value, e)
 
     AutoEnumTypeHandler = type(
@@ -1198,8 +1198,8 @@ def enum_type_handler(e: EnumMeta):
         {
             "sql_type": "INTEGER",
             "python_type": e,
-            "p2s": p2s,
-            "s2p": s2p,
+            "to_sql": to_sql,
+            "to_python": to_python,
         },
     )
     AutoEnumTypeHandler.register()
@@ -1402,7 +1402,7 @@ def listify(o: t.Any):
 
 
 def joinmap(o, f: t.Callable = ds_name, seperator: str = ", ") -> str:
-    """ Returns a seperated list of f(i) for i in o. """
+    """Returns a seperated list of f(i) for i in o."""
     return seperator.join([str(f(o)) for o in listify(o)])
 
 

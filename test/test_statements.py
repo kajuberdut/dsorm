@@ -4,7 +4,7 @@ from dsorm import Column, Database, Insert, Qname, Statement, Table
 
 
 def test_static_default():
-    assert Column(column_name="bob", default="bob").sql() == "bob TEXT DEFAULT 'bob'"
+    assert Column(column_name="bob", default="'bob'").sql() == "bob TEXT DEFAULT 'bob'"
 
 
 def data_func(data):
@@ -24,9 +24,10 @@ def test_insert_defaults():
             Column(column_name="noargfunc", python_type=str, default=no_arg_func),
         ],
     )
-    s = t.insert(data={"Some Column": "stuff"}).sql()
-    assert "Value1" in s
-    assert "Value2" in s
+    ins = t.insert(data={"Some Column": "stuff"})
+    ins.prep()
+    assert "Value1" == ins.data[0]["datafunc"]
+    assert "Value2" == ins.data[0]["noargfunc"]
 
 
 def test_insert_only_defaults():

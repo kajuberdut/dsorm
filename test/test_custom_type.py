@@ -1,24 +1,13 @@
 from datetime import datetime
 
 import pytest
-from dsorm import (Column, Database, DateHandler, FloatHandler, IntHandler,
-                   Table, TypeHandler, TypeMaster)
-
-
-def test_IntHandler():
-    assert IntHandler.p2s(1) == "1"
-    assert IntHandler.s2p("1") == 1
-
-
-def test_FloatHandler():
-    assert FloatHandler.p2s(1.0) == "1.0"
-    assert FloatHandler.s2p("1.0") == 1.0
+from dsorm import Column, Database, DateHandler, Table, TypeHandler, TypeMaster
 
 
 def test_DateHandler():
     d = datetime.now()
-    assert DateHandler.p2s(d) == str(d.timestamp())
-    assert DateHandler.s2p(d.timestamp()) == d
+    assert DateHandler.to_sql(d) == str(d.timestamp())
+    assert DateHandler.to_python(d.timestamp()) == d
 
 
 class NoneClass:
@@ -31,18 +20,19 @@ def test_custom_handler():
         sql_type = ""
 
         @staticmethod
-        def p2s(value):
+        def to_sql(value):
             return "NULL"
 
         @staticmethod
-        def s2p(value):
+        def to_python(value):
             return None
 
     NoneMaker.register()
     assert TypeMaster()[NoneClass] == NoneMaker
 
     t = Table(
-        table_name="NoneTable", column=[Column(column_name="NoneColumn", python_type=NoneClass)]
+        table_name="NoneTable",
+        column=[Column(column_name="NoneColumn", python_type=NoneClass)],
     )
 
     Database.memory().initialize()
@@ -54,5 +44,6 @@ def test_custom_handler():
 def test_bad_register():
     class DumbHandler(TypeHandler):
         pass
+
     with pytest.raises(TypeError):
         DumbHandler.register()

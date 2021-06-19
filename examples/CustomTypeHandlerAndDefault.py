@@ -11,16 +11,14 @@ class UUIDHandler(TypeHandler):
     python_type = UUID  # This should be a valid python type.
 
     @staticmethod
-    def p2s(value):
-        """ This static method should return a value that would be valid "as is" in a sql statement. """
-        return (
-            f"'{str(value)}'"  # Note that strings need single quotes to be valid in SQL
-        )
+    def to_sql(uuid):
+        "This static method should convert a Python data type into one of SQLite’s supported types."
+        return uuid.bytes_le
 
     @staticmethod
-    def s2p(value):
-        """ This static method should handle converting a SQLite datatype to a Python datatype. """
-        return UUID(value)
+    def to_python(uuid_bytes_le):
+        "This static method should convert a bytestring into the appropriate Python data type."
+        return UUID(bytes_le=uuid_bytes_le)
 
 
 # Custom type handlers must be registered before use.
