@@ -45,8 +45,3 @@ def test_db_close(db_path):
 def test_execute(db_path):
     result = Database(db_path).execute("select 1 as stuff")
     assert result[0]["stuff"] == 1
-
-
-def test_extest_bad_executeecute(db_path):
-    with pytest.raises(OperationalError):
-        Database(db_path).execute("1")  # type: ignore

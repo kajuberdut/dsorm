@@ -45,8 +45,8 @@ def test_nested_where():
     BOOK_NAME = "Harry Potter"
     column_a = columnify("book.name")
     column_b = columnify("author.name")
-    w = Where(where={column_a: BOOK_NAME, "or": Where({column_b: AUTHOR_NAME})})
+    w = Where(where={column_a: Comparison.eq(target=BOOK_NAME, key="BookName"), "or": Where({column_b: Comparison.eq(target=AUTHOR_NAME, key="AuthorName")})})
     assert (
         w.sql()
-        == f"WHERE [book].[name] = '{BOOK_NAME}'\nor ( [author].[name] = '{AUTHOR_NAME}'\n)"
+        == f"WHERE [book].[name] = :BookName\nor ( [author].[name] = :AuthorName\n)"
     )

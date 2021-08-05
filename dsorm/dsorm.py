@@ -6,24 +6,27 @@ This module provides some abstractions of SQL concepts into Object Relation Mapp
 import dataclasses
 import functools
 import inspect
+import os
 import pickle
 import re
 import sqlite3
 import typing as t
 from abc import ABCMeta, abstractmethod
+from base64 import b32encode
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum, EnumMeta
 from inspect import getattr_static, signature
-from sqlite3.dbapi2 import OperationalError
+from sqlite3.dbapi2 import OperationalError, ProgrammingError
+
 
 # SECTION 1: Types / Literals
 WhereLike = t.Union["Where", t.Dict]
 LINE: str = "\n"
 TAB = "\t"
 ID_COLUMN = {"python_type": int, "pkey": True}
-KW = {
+KEYWORDS = {
     "OPENPAREN": "(",
     "CLOSEPAREN": ")",
     "FOREIGNKEY": "FOREIGN KEY",
@@ -115,19 +118,23 @@ class Database:
 
     def execute(
         self,
-        command: t.Union[str, "SQL", "Statement"],
+        command: t.Union[str, "SQLProvider", "Statement"],
         parameters: t.Union[t.Tuple, t.Dict] = None,
         commit: bool = True,
     ):
         """Execute a sql command with optional parameters"""
         with self.cursor() as cur:
             execute = cur.execute
+            sql = ds_sql(command)
             try:
-                if ";" in (sql := ds_sql(command)):
+                if ";" in sql:
                     execute = cur.executescript
                 else:
-                    if parameters is None and hasattr(command, "data"):
-                        parameters = command.data
+                    parameters = (
+                        parameters
+                        if parameters
+                        else (command.data if hasattr(command, "data") else None)
+                    )
                     if isinstance(parameters, list):
                         if len(parameters) == 1:
                             parameters = parameters[0]
@@ -143,12 +150,13 @@ class Database:
                         if i is not None
                     ]
                 )
-            except (OperationalError, ValueError, TypeError) as e:
+            except (OperationalError, ValueError, TypeError, ProgrammingError) as e:
                 if match := re.search(r"no such table:\s(.*)", str(e)):
                     self.table(match.group(1)).execute()
                     self.execute(command=command, parameters=parameters, commit=commit)
                 else:
                     print(f"Syntax error in: {sql}\n\nError: {str(e)}")
+                    print(f"Data: {command.data}")
                     raise
             if commit:
                 self.commit()
@@ -308,6 +316,7 @@ class TypeMaster:
         int: IntCaster,
         float: FloatHandler,
     }
+    adaptable: t.Set[t.Type] = set()
     _allow_pickle: bool = False
 
     @classmethod
@@ -318,6 +327,7 @@ class TypeMaster:
     def register(cls, handler: t.Type[TypeHandler]) -> None:
         if hasattr(handler, "to_sql") and callable(getattr(handler, "to_sql")):
             sqlite3.register_adapter(handler.python_type, handler.to_sql)
+            cls.adaptable.add(handler.python_type)
         if hasattr(handler, "to_python") and callable(getattr(handler, "to_python")):
             sqlite3.register_converter(handler.sql_type, handler.to_python)
         cls.type_handlers[handler.python_type] = handler  # type: ignore
@@ -364,11 +374,11 @@ class DBObject:
         self.db_path = db.db_path if hasattr(db, "db_path") else db
 
     def execute(self) -> t.Optional[t.List]:
-        if isinstance(self, SQL):
+        if isinstance(self, SQLProvider):
             return self.db.execute(self)
 
 
-class SQL(metaclass=ABCMeta):  # pragma: no cover
+class SQLProvider(metaclass=ABCMeta):  # pragma: no cover
     @classmethod
     def __subclasshook__(cls, other):
         hookmethod = getattr(other, "sql", None)
@@ -510,31 +520,27 @@ class Pragma(DBObject):
 @dataclasses.dataclass
 class Statement:
     components: t.Dict = dataclasses.field(default_factory=dict, repr=False)
-
-    @property
-    def component_seperator(self):
-        return " "
+    seperator: str = " "
 
     def sql(self) -> str:
-        if hasattr(self, "prep"):
-            self.prep()
         for i in self.Order:
-            if i.name.startswith("KW_"):
-                self.components[i] = KW[i.name.split("_")[1]]
-            elif self.components.get(i) is None:
-                try:
-                    if (result := getattr(self, f"{i.name.lower()}_sql")()) is not None:
-                        self[i] = result
-                except AttributeError:
-                    pass
+            if self.components.get(i) is None:
+                if hasattr(self, f"{i.name.lower()}_sql"):
+                    getattr(self, f"{i.name.lower()}_sql")()
+            elif (kw := i.name.split("_")[0]) in KEYWORDS:
+                self.components[i] = KEYWORDS[kw]
 
-        return self.component_seperator.join(
+        return self.seperator.join(
             [
                 ds_sql(self.components[clause])
                 for clause in self.Order
                 if self.components.get(clause) is not None
             ]
         )
+
+    @property
+    def data(self):
+        return None
 
     @functools.singledispatchmethod
     def get_order(self, key):
@@ -547,9 +553,6 @@ class Statement:
     @get_order.register
     def _(self, key: str) -> Enum:
         return self.Order[key]
-
-    def ommit(self, key):
-        self[self.get_order(key)] = ""
 
     def __getitem__(self, key):
         return self.components[self.get_order(key)]
@@ -577,40 +580,62 @@ class TableObjectBase(Statement):
 @dataclasses.dataclass
 class WhereObjectBase(Statement):
     where: WhereLike = dataclasses.field(default_factory=dict)
+    _data: t.Dict = dataclasses.field(repr=False, default_factory=dict)
 
     def where_sql(self):
-        self["WHERE"] = self.where if hasattr(self.where, "sql") else Where(self.where)
+        w = self.where if hasattr(self.where, "sql") else Where(self.where)
+        self["WHERE"] = w.sql()
+        self._data = {**self._data, **w.data}
+
+    @property
+    def data(self):
+        return self._data
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass()
 class Insert(DBObject, TableObjectBase):
-    data: t.Optional[t.Union[t.Dict, t.List, DataProvider]] = dataclasses.field(
-        default_factory=dict
-    )
     replace: bool = False
     column: t.List = dataclasses.field(default_factory=list)  # type: ignore
     _column: t.List = dataclasses.field(init=False, repr=False)
-    skip_defaults: bool = False
+    data: t.List[t.Dict] = dataclasses.field(default_factory=dict)
+    _data: t.List[t.Dict] = dataclasses.field(init=False, repr=False)
+    _defaults_set: bool = False
+
+    def __post_init__(self):
+        if not hasattr(self, "_data"):
+            self._data = []
 
     @property
     def column(self):
+        if self._column is None:
+            self._column = list()
         return self._column
 
     @column.setter
     def column(self, column):
         self._column = column
 
-    def __post_init__(self):
-        if isinstance(self.data, DataProvider):
-            self.data = self.data.data()
+    @property
+    def has_defaults(self):
+        return any([resolve(c, "default_sig") for c in self.column])
 
-    def prep(self):
-        if self.data is not None:
-            self.data = (
-                self.data
-                if self.skip_defaults
-                else [self.add_default(data=d) for d in listify(self.data)]
+    @property
+    def data(self):
+        if self._defaults_set is False and self.has_defaults:
+            self.set_defaults()
+            self._defaults_set = True
+        return self._data if self._data else []
+
+    @data.setter
+    def data(self, value: t.Union[t.List[t.Dict], t.Dict, DataProvider]) -> None:
+        if value is not None:
+            self._data = listify(
+                value.data() if isinstance(value, DataProvider) else value
             )
+            self._defaults_set = False
+
+    def set_defaults(self):
+        self._data = [self.add_default(data=d) for d in listify(self._data)]
 
     def add_default(self, data: t.Dict) -> t.Dict:
         "Adds default values for missing items where column.default_sig."
@@ -630,16 +655,16 @@ class Insert(DBObject, TableObjectBase):
         self["INSERT"] = f"{'REPLACE' if self.replace else 'INSERT'} INTO"
 
     def identity_sql(self):
-        return self.table.identity
+        self["IDENTITY"] = self.table.identity
 
     def column_sql(self):
-        if self.data is None:
+        if not self.data:
             self["COLUMN"] = "DEFAULT VALUES"
         else:
             self["COLUMN"] = f"({', '.join(self.data[0].keys())})"
 
     def values_sql(self):
-        if self.data is not None:
+        if self.data:
             self["VALUES"] = f"VALUES ({':'+', :'.join(self.data[0].keys())})"
 
     class Order(Enum):
@@ -653,10 +678,17 @@ class Insert(DBObject, TableObjectBase):
 @dataclasses.dataclass
 class Select(DBObject, WhereObjectBase, TableObjectBase):
     column: t.Optional[t.List[t.Union["Column", "Qname", str, "RawSQL"]]] = None
+    _data: t.Dict = dataclasses.field(repr=False, default_factory=dict)
 
     def __post_init__(self):
+        if not hasattr(self, "_data"):
+            self._data = []
         self.column = [columnify(c) for c in self.column]
-        self["JOIN"] = Clauses()
+        self["JOIN"] = ClauseList()
+
+    @property
+    def data(self):
+        return self._data
 
     def select_sql(self):
         self["SELECT"] = "SELECT"
@@ -686,7 +718,7 @@ class Select(DBObject, WhereObjectBase, TableObjectBase):
             on = On(where={k: columnify(v) for k, v in on.items()})
         self["JOIN"].add_clause(Join(table=join_table, on=on, keyword=keyword))
         if columns:
-            [self.add_column(c) for c in columns]
+            self.add_column(columns)
         return self
 
     left_join = functools.partialmethod(join, keyword="LEFT JOIN")
@@ -788,10 +820,10 @@ class Column(Statement, DBObject):
         return ident
 
     def columnname_sql(self):
-        return self.column_name
+        self["COLUMNNAME"] = self.column_name
 
     def type_sql(self):
-        return TypeMaster.get(self.python_type).sql_type
+        self["TYPE"] = TypeMaster.get(self.python_type).sql_type
 
     def notnull_sql(self):
         if not self.nullable:
@@ -799,15 +831,15 @@ class Column(Statement, DBObject):
 
     def unique_sql(self):
         if self.unique:
-            return "UNIQUE"
+            self["UNIQUE"] = "UNIQUE"
 
     def primarykey_sql(self):
         if self.pkey:
-            return "PRIMARY KEY"
+            self["PRIMARYKEY"] = "PRIMARY KEY"
 
     def default_sql(self):
         if self.default is not None and not self.default_sig:
-            return f"DEFAULT {TypeMaster.cast(self.default)}"
+            self["DEFAULT"] = f"DEFAULT {TypeMaster.cast(self.default)}"
 
     def __hash__(self):
         return hash((self.table, self.column_name))
@@ -850,18 +882,18 @@ class ForeignKey(Statement):
 
     def refcolumn_sql(self):
         self.reference = columnify(self.reference)
-        return resolve(self.reference, ["column_name", "name", "sql"])
+        self["REFCOLUMN"] = resolve(self.reference, ["column_name", "name", "sql"])
 
     class Order(Enum):
-        KW_FOREIGNKEY = 1
-        KW_OPENPAREN_1 = 2
+        FOREIGNKEY = 1
+        OPENPAREN = 2
         FKCOLUMN = 3
-        KW_CLOSEPAREN_1 = 4
-        KW_REFERENCES = 5
+        CLOSEPAREN = 4
+        REFERENCES = 5
         REFTABLE = 6
-        KW_OPENPAREN_2 = 7
+        OPENPAREN_1 = 7
         REFCOLUMN = 8
-        KW_CLOSEPAREN_3 = 9
+        CLOSEPAREN_1 = 9
 
 
 @dataclasses.dataclass
@@ -905,15 +937,17 @@ class Table(Statement, DBObject):
             )
 
     def create_sql(self):
-        return (
-            f"CREATE {'TEMPORARY ' if self.temp else ''}TABLE IF NOT EXISTS {self.name}"
-        )
+        self[
+            "CREATE"
+        ] = f"CREATE {'TEMPORARY ' if self.temp else ''}TABLE IF NOT EXISTS {self.name}"
 
     def column_sql(self):
-        return f"{joinmap(self.column, ds_sql)}"
+        self["COLUMN"] = f"({joinmap(self.column, ds_sql)})"
 
     def constraint_sql(self):
-        return f"{',' if len(self.constraints) > 0 else ''}{joinmap(self.constraints, ds_sql)}"
+        self[
+            "CONSTRAINT"
+        ] = f"{',' if len(self.constraints) > 0 else ''}{joinmap(self.constraints, ds_sql)}"
 
     def pkey(self) -> Column:
         return [c for c in self.column if c.pkey][0]
@@ -990,12 +1024,17 @@ class Table(Statement, DBObject):
 
     class Order(Enum):
         CREATE = 1
-        KW_OPENPAREN = 2
+        OPENPAREN = 2
         COLUMN = 3
         CONSTRAINT = 4
-        KW_CLOSEPAREN = 5
-        KW_TERMINATOR_1 = 6
+        CLOSEPAREN = 5
+        TERMINATOR = 6
         REFDATA = 7
+
+
+def ue_id():
+    "Unique Enough Id"
+    return b32encode(os.urandom(5)).decode("utf-8")
 
 
 @dataclasses.dataclass
@@ -1005,6 +1044,11 @@ class Comparison:
     ]
     target: t.Union[Statement, str, t.Type[TBD]]
     operator: t.Literal["=", ">", "<", "!=", "<>", ">=", "<="]
+    key: str = dataclasses.field(default_factory=ue_id)
+
+    @property
+    def data(self):
+        return {self.key: self.target}
 
     def sql(self):
         if self.column == TBD or self.column is None:
@@ -1012,8 +1056,8 @@ class Comparison:
         if isinstance(self.target, (Column, Qname)):
             t = ds_sql(ds_identity(self.target))
         else:
-            t = TypeMaster.cast(self.target)
-        return f"{ds_sql(ds_identity(self.column))} {self.operator} {ds_sql(ds_identity(t))}"
+            t = f":{self.key}"
+        return f"{ds_sql(ds_identity(self.column))} {self.operator} {t}"
 
     @classmethod
     def get_comparison(
@@ -1021,11 +1065,12 @@ class Comparison:
         column: t.Union["Column", "Qname", str, t.Type["TBD"], "RawSQL"] = TBD,
         target: Statement = None,
         operator: t.Literal["=", ">", "<", "!=", "<>", ">=", "<="] = "=",
+        key: str = None,
     ) -> "Comparison":
         if target is None:
             raise TypeError("target argument is required")
         return cls(
-            column=columnify(column), target=target, operator=operator  # type: ignore
+            column=columnify(column), target=target, operator=operator, key=key if key else ue_id()  # type: ignore
         )
 
     equal = eq = functools.partialmethod(get_comparison, operator="=")
@@ -1065,6 +1110,10 @@ class Comparison:
 class Where:
     where: WhereLike = dataclasses.field(default_factory=dict)
     keyword: str = "WHERE"
+    seperator: str = LINE + TAB + "AND "
+    prefix: str = ""
+    suffix: str = ""
+    _data: t.Dict[str, t.Any] = dataclasses.field(default_factory=dict)
 
     def __getitem__(self, key):
         return self.where[key]
@@ -1072,23 +1121,34 @@ class Where:
     def __setitem__(self, key, value):
         self.where[key] = value
 
+    @property
+    def data(self):
+        return self._data
+
+    def nest(self, keyword=""):
+        self.keyword = keyword
+        self.prefix = "("
+        self.suffix = ")"
+
     def sql(self):
         if not self.where:
             return ""
-        clause_list = list()
-        extras = list()
+        clause_list = ClauseList(
+            seperator=self.seperator, prefix=self.prefix, suffix=self.suffix
+        )
         for k, v in self.where.items():
             if isinstance(v, Where):
-                v.keyword = ""
-                extras.append(f"{LINE + str(k)} ({ds_sql(v) + LINE})")
+                v.nest(keyword=k)
             else:
+                if isinstance(v, (str, int, float, Column, Qname)) or type(v) in TypeMaster.adaptable:
+                    v = Comparison.get_comparison(column=k, target=v)  # type: ignore
                 if hasattr(v, "column") and v.column == TBD:  # type: ignore
                     v.column = columnify(k)  # type: ignore
-                if isinstance(v, (str, int, float, Column, Qname)):
-                    clause_list.append(Comparison.get_comparison(column=k, target=v))  # type: ignore
-                else:
-                    clause_list.append(v)
-        return f"""{self.keyword} {joinmap(clause_list, ds_sql, seperator=LINE + TAB + "AND ")}{joinmap(extras, seperator=LINE)}"""
+            clause_list += v
+
+        sql = clause_list.sql()
+        self._data = clause_list.data
+        return self.keyword + " " + sql
 
     def items(self):
         return self.where.items()
@@ -1105,19 +1165,19 @@ class Join(DBObject, TableObjectBase):
     keyword: str = "JOIN"
 
     @property
-    def component_seperator(self):
+    def seperator(self):
         return " "
 
     def join_sql(self) -> str:
         return f"{self.keyword} "
 
     def table_sql(self) -> str:
-        return ds_sql(ds_identity(self.table))
+        self["TABLE"] = ds_sql(ds_identity(self.table))
 
     def on_sql(self) -> str:
         if isinstance(self.on, dict):
             self.on = On(self.on)
-        return ds_sql(self.on)
+        self["ON"] = ds_sql(self.on)
 
     class Order(Enum):
         JOIN = 1
@@ -1126,15 +1186,47 @@ class Join(DBObject, TableObjectBase):
 
 
 @dataclasses.dataclass
-class Clauses:
+class ClauseList:
     clauses: t.List = dataclasses.field(default_factory=list)
+    keyword: str = ""
     seperator: str = LINE
+    prefix: str = ""
+    suffix: str = ""
+    _data: t.Dict[str, t.Any] = dataclasses.field(default_factory=dict, repr=False)
+
+    @classmethod
+    def value_list(cls, values):
+        data = {ue_id(): v for v in values}
+        clauses = [f":{k}" for k in data.keys()]
+        return cls(clauses=clauses, _data=data, seperator=", ", prefix="(", suffix=")")
+
+    @property
+    def data(self):
+        return self._data
+
+    def harvest(self, c: t.Union[DataProvider, SQLProvider], i: int):
+        if (data := resolve(c, "data")) and isinstance(data, dict):
+            self._data = {**self._data, **data}
+        if i == 0:
+            return resolve(c, "sql")
+        elif hasattr(c, "keyword"):
+            return c.keyword + " " + resolve(c, "sql")
+        else:
+            return self.seperator + resolve(c, "sql")
 
     def sql(self):
-        return self.seperator.join([ds_sql(i) for i in self.clauses])
+        return (
+            self.prefix
+            + "".join([self.harvest(c, i) for i, c in enumerate(self.clauses)])
+            + self.suffix
+        )
 
     def add_clause(self, clause):
         self.clauses.append(clause)
+
+    def __iadd__(self, o: t.Union[DataProvider, SQLProvider]):
+        self.clauses.append(o)
+        return self
 
 
 # SECTION 5: Utility functions
@@ -1200,6 +1292,7 @@ def enum_type_handler(e: EnumMeta):
             "python_type": e,
             "to_sql": to_sql,
             "to_python": to_python,
+            "quote_escape": to_sql,
         },
     )
     AutoEnumTypeHandler.register()
@@ -1398,6 +1491,8 @@ def _(object: dataclasses.Field) -> Column:  # type: ignore
 
 
 def listify(o: t.Any):
+    if o is None:
+        return []
     return o if isinstance(o, list) else [o]
 
 

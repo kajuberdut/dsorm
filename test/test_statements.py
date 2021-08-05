@@ -1,4 +1,4 @@
-from dsorm.dsorm import columnify, table_ident
+from dsorm.dsorm import columnify
 import pytest
 from dsorm import Column, Database, Insert, Qname, Statement, Table
 
@@ -25,7 +25,6 @@ def test_insert_defaults():
         ],
     )
     ins = t.insert(data={"Some Column": "stuff"})
-    ins.prep()
     assert "Value1" == ins.data[0]["datafunc"]
     assert "Value2" == ins.data[0]["noargfunc"]
 
@@ -42,7 +41,7 @@ def test_insert_only_defaults():
     assert "DEFAULT VALUES" in t.insert(data=None).sql()
 
 
-def test_db_insert_retreive_delete(table_setup, stuff):
+def test_db_insert_retrieve_delete(table_setup, stuff):
     d = {"stuff": stuff}
     table_setup.insert(data=d).execute()
     result = table_setup.select(where=d).execute()
@@ -91,3 +90,8 @@ def test_columnify():
 def test_bad_columnify():
     with pytest.raises(ValueError):
         columnify(1)
+
+
+def test_has_defaults():
+    t = Table(table_name="Bob'sHouse", column=[Column(column_name="bob", default=lambda x: x)])
+    assert t.has_defaults is True
