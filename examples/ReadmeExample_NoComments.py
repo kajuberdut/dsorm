@@ -23,7 +23,7 @@ class Person(DataClassTable):
 
 person = db.table("Person")
 
-stmt = person.insert(
+person.insert(
     data=[
         {"first_name": "John", "last_name": "Doe", "team": Team.BLUE},
     ],
@@ -31,11 +31,7 @@ stmt = person.insert(
 
 Jane = Person(first_name="Jane", last_name="Doe", team=Team.RED).save()
 
-person.delete(
-    where={
-        "id": person.select(
-            where={"first_name": Comparison.like(target="J%n%")},
-        ).execute()[0]["id"]
-    }
+doe_family = person.select(
+    where={"first_name": Comparison.like(target="J%n%")},
 ).execute()
-print(person.select(column=["id", "first_name"]).execute())
+person.delete(where={"id": doe_family[0]["id"]}).execute()

@@ -186,7 +186,7 @@ print(person.select(column=["id", "first_name"]).execute())
 
 ```
 
-[The same example without comments](https://github.com/kajuberdut/dsorm/blob/main/examples/ReadmeExample_NoComments.py)
+[The same example without comments or prints. Shows efficiency and readability of DDL/DML](https://github.com/kajuberdut/dsorm/blob/main/examples/ReadmeExample_NoComments.py)
 
 
 ### Further Examples
