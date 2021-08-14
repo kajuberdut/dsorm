@@ -31,10 +31,10 @@ def test_table_from_object():
 def test_foreign_key():
     t1 = Table(table_name="footable", column=[Column.id()])
     t2 = Table(
-        table_name="bartable", column=[Column(column_name="fooid", python_type=str)]
+        table_name="bartable",
+        column=[Column(column_name="fooid", python_type=str, pkey=True)],
     )
     f = ForeignKey(column=t1.column[0], reference=t2.column[0])
-    print(f.sql())
     assert f.sql() == "FOREIGN KEY ( id ) REFERENCES bartable ( fooid )"
 
 
@@ -68,9 +68,9 @@ def test_table_fkey():
         book.fkey(on_column=(Column(column_name="bob", table=BobsTable))).sql()
         == "FOREIGN KEY ( bob ) REFERENCES some_table ( id )"
     )
-    print(BobsTable.constraint_sql())
+    BobsTable.constraint_sql()
     assert (
-        BobsTable.constraint_sql()
+        BobsTable.components[Table.Order["CONSTRAINT"]]
         == ",FOREIGN KEY ( bob ) REFERENCES some_table ( id )"
     )
 

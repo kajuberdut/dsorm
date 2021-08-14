@@ -527,8 +527,8 @@ class Statement:
             if self.components.get(i) is None:
                 if hasattr(self, f"{i.name.lower()}_sql"):
                     getattr(self, f"{i.name.lower()}_sql")()
-            elif (kw := i.name.split("_")[0]) in KEYWORDS:
-                self.components[i] = KEYWORDS[kw]
+                elif (kw := i.name.split("_")[0]) in KEYWORDS:
+                    self.components[i] = KEYWORDS[kw]
 
         return self.seperator.join(
             [
@@ -942,7 +942,7 @@ class Table(Statement, DBObject):
         ] = f"CREATE {'TEMPORARY ' if self.temp else ''}TABLE IF NOT EXISTS {self.name}"
 
     def column_sql(self):
-        self["COLUMN"] = f"({joinmap(self.column, ds_sql)})"
+        self["COLUMN"] = f"{joinmap(self.column, ds_sql)}"
 
     def constraint_sql(self):
         self[
@@ -1140,7 +1140,10 @@ class Where:
             if isinstance(v, Where):
                 v.nest(keyword=k)
             else:
-                if isinstance(v, (str, int, float, Column, Qname)) or type(v) in TypeMaster.adaptable:
+                if (
+                    isinstance(v, (str, int, float, Column, Qname))
+                    or type(v) in TypeMaster.adaptable
+                ):
                     v = Comparison.get_comparison(column=k, target=v)  # type: ignore
                 if hasattr(v, "column") and v.column == TBD:  # type: ignore
                     v.column = columnify(k)  # type: ignore
@@ -1210,7 +1213,7 @@ class ClauseList:
         if i == 0:
             return resolve(c, "sql")
         elif hasattr(c, "keyword"):
-            return c.keyword + " " + resolve(c, "sql")
+            return " " + resolve(c, "sql")
         else:
             return self.seperator + resolve(c, "sql")
 

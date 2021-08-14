@@ -4,8 +4,8 @@ from dsorm.dsorm import columnify
 
 
 def test_comparison():
-    w = Where({"column_name": Comparison.get_comparison(target="thingy")})
-    assert w.sql() == "WHERE [column_name] = 'thingy'"
+    w = Where({"column_name": Comparison.get_comparison(target="thingy", key="thingy")})
+    assert w.sql() == "WHERE [column_name] = :thingy"
 
 
 def test_comparison_no_target():
@@ -48,5 +48,5 @@ def test_nested_where():
     w = Where(where={column_a: Comparison.eq(target=BOOK_NAME, key="BookName"), "or": Where({column_b: Comparison.eq(target=AUTHOR_NAME, key="AuthorName")})})
     assert (
         w.sql()
-        == f"WHERE [book].[name] = :BookName\nor ( [author].[name] = :AuthorName\n)"
+        == "WHERE [book].[name] = :BookName or ([author].[name] = :AuthorName)"
     )

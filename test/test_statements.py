@@ -90,8 +90,3 @@ def test_columnify():
 def test_bad_columnify():
     with pytest.raises(ValueError):
         columnify(1)
-
-
-def test_has_defaults():
-    t = Table(table_name="Bob'sHouse", column=[Column(column_name="bob", default=lambda x: x)])
-    assert t.has_defaults is True
