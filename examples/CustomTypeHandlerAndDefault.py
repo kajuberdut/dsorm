@@ -1,23 +1,24 @@
 from datetime import datetime
 from uuid import UUID, uuid4
-
 from dsorm import Column, Database, Table, TypeHandler
 
 
 # Subclass TypeHandler to handle any python type
 # Be sure your methods are static methods like the example
 class UUIDHandler(TypeHandler):
-    sql_type = "TEXT"  # If you don't set sql_type you will get whatever type affinity SQLite has for the value.
+    sql_type = "UUID"  # If you don't set sql_type you will get whatever type affinity SQLite has for the value.
     python_type = UUID  # This should be a valid python type.
 
     @staticmethod
-    def to_sql(uuid):
+    def to_sql(u: UUID):
         "This static method should convert a Python data type into one of SQLite’s supported types."
-        return uuid.bytes_le
+        return u.bytes_le
 
     @staticmethod
     def to_python(uuid_bytes_le):
         "This static method should convert a bytestring into the appropriate Python data type."
+        print(uuid_bytes_le)
+        print(type(uuid_bytes_le))
         return UUID(bytes_le=uuid_bytes_le)
 
 
@@ -42,6 +43,8 @@ person = Table(
         Column(column_name="create_date", python_type=datetime, default=datetime.now),
     ],
 )
+
+print(person.sql())
 
 Database.memory().initialize()
 
