@@ -2,10 +2,10 @@
 No configuration beyond a db_path is needed to use dsorm as a connection manager.
 However, a default db simplifies most use.
 Setting a default in your __init__.py file will quickly lead to difficulty.
-For example, what if you want a seperate test database, or want to get database
+If you want a seperate test database, or want to get database
 name from a config file.
-It's also not a good practice to create the database when a user simply imports
-your code, which setup in __init__.py or other imported files will cause.
+It's also not a good practice to create the database file when a user simplyq
+imports your code.
 
 For these situations two decorators are provided that allow you to push the
     operations of setting your config and instantiating your database to just
@@ -16,7 +16,7 @@ You have seen in previous examples the Database().initialize() method that creat
     allows you to set SQLite3 runtime configurations called pragma.
 """
 
-from dsorm import Database, Pragma, post_connect, pre_connect
+from dsorm import Database, Pragma, pre_connect
 
 
 # The pre_connect wrapper let's you set a function that will be called before the first connection
@@ -26,15 +26,6 @@ def db_setup(db):
     # Or you could have already loaded a config for your run context in which case
     # you would simply pull in the database name here
     db.default_db = ":memory:"
-
-
-# The post_connect wrapper is called once after the first connection is made
-@post_connect()
-def build():
-    # This will set pragma and create all tables.
-    # The objects are defined further down
-    # Using this hook pushes instantiation to first connection
-    db.initialize()
 
 
 # This pragma object will automatically be picked up by initialize and run.
