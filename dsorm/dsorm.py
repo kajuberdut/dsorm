@@ -1197,25 +1197,19 @@ class ClauseList:
     suffix: str = ""
     _data: t.Dict[str, t.Any] = dataclasses.field(default_factory=dict, repr=False)
 
-    @classmethod
-    def value_list(cls, values):
-        data = {ue_id(): v for v in values}
-        clauses = [f":{k}" for k in data.keys()]
-        return cls(clauses=clauses, _data=data, seperator=", ", prefix="(", suffix=")")
-
     @property
     def data(self):
         return self._data
 
     def harvest(self, c: t.Union[DataProvider, SQLProvider], i: int):
+        result = resolve(c, "sql")
         if (data := resolve(c, "data")) and isinstance(data, dict):
             self._data = {**self._data, **data}
-        if i == 0:
-            return resolve(c, "sql")
-        elif hasattr(c, "keyword"):
-            return " " + resolve(c, "sql")
+        if hasattr(c, "keyword"):
+            keyword = " "
         else:
-            return self.seperator + resolve(c, "sql")
+            keyword = self.seperator if i > 0 else ""
+        return keyword + result
 
     def sql(self):
         return (
@@ -1288,10 +1282,10 @@ def enum_type_handler(e: EnumMeta):
             return id_to_enum_member(value, e)
 
     AutoEnumTypeHandler = type(
-        f"{type(e).__name__}TypeHandler",
+        f"{e.__name__}TypeHandler",
         (TypeHandler,),
         {
-            "sql_type": "INTEGER",
+            "sql_type": e.__name__,
             "python_type": e,
             "to_sql": to_sql,
             "to_python": to_python,

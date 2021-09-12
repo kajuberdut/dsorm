@@ -17,8 +17,6 @@ class UUIDHandler(TypeHandler):
     @staticmethod
     def to_python(uuid_bytes_le):
         "This static method should convert a bytestring into the appropriate Python data type."
-        print(uuid_bytes_le)
-        print(type(uuid_bytes_le))
         return UUID(bytes_le=uuid_bytes_le)
 
 
@@ -44,7 +42,6 @@ person = Table(
     ],
 )
 
-print(person.sql())
 
 Database.memory().initialize()
 
