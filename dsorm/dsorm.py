@@ -31,6 +31,7 @@ KEYWORDS = {
     "CLOSEPAREN": ")",
     "FOREIGNKEY": "FOREIGN KEY",
     "REFERENCES": "REFERENCES",
+    "UNIQUER": "UNIQUE",
     "TERMINATOR": ";\n",
 }
 
@@ -897,13 +898,30 @@ class ForeignKey(Statement):
 
 
 @dataclasses.dataclass
+class UniqueConstraint(Statement):
+    column: t.List = dataclasses.field(default_factory=list)
+
+    def column_sql(self):
+        self["COLUMN"] = f"{joinmap(self.column, ds_sql)}"
+
+    def unique_sql(self):
+        self["UNIQUE"] = "UNIQUE"
+
+    class Order(Enum):
+        UNIQUE = 1
+        OPENPAREN = 2
+        COLUMN = 3
+        CLOSEPAREN = 4
+
+
+@dataclasses.dataclass
 class Table(Statement, DBObject):
     table_name: str = ""
     column: t.List = dataclasses.field(default_factory=list)
     constraints: t.List = dataclasses.field(default_factory=list)
     schema_name: t.Optional[str] = None
     alias: t.Optional[str] = None
-    reference_data: dataclasses.InitVar[t.Optional[t.Union[t.Dict, t.List]]] = None
+    reference_data: t.Optional[t.Union[t.Dict, t.List]] = None
     temp: bool = False
 
     @staticmethod
@@ -925,16 +943,12 @@ class Table(Statement, DBObject):
     def name(self):
         return self.table_name
 
-    def __post_init__(self, reference_data):
+    def __post_init__(self):
         if not self.column or not self.table_name:
             raise ValueError("table_name and column are required for Table instance.")
         for c in self.column:
             c.table = self
         self.db.register(self)
-        if reference_data is not None:
-            self.components[self.Order["REFDATA"]] = self.insert(
-                data=reference_data, replace=True
-            )
 
     def create_sql(self):
         self[
@@ -947,7 +961,7 @@ class Table(Statement, DBObject):
     def constraint_sql(self):
         self[
             "CONSTRAINT"
-        ] = f"{',' if len(self.constraints) > 0 else ''}{joinmap(self.constraints, ds_sql)}"
+        ] = f"{',' if self.constraints else ''}{joinmap(self.constraints, ds_sql)}"
 
     def pkey(self) -> Column:
         return [c for c in self.column if c.pkey][0]
@@ -1013,6 +1027,14 @@ class Table(Statement, DBObject):
             )
         return Drop(table=self)
 
+    def insert_ref_data(self):
+        if self.reference_data is not None:
+            self.insert(data=self.reference_data, replace=True).execute()
+
+    def execute(self):
+        self.db.execute(self)
+        self.insert_ref_data()
+
     def __repr__(self):
         return ds_sql(ds_identity(self.identity))
 
@@ -1028,8 +1050,6 @@ class Table(Statement, DBObject):
         COLUMN = 3
         CONSTRAINT = 4
         CLOSEPAREN = 5
-        TERMINATOR = 6
-        REFDATA = 7
 
 
 def ue_id():
