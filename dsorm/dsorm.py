@@ -930,6 +930,7 @@ class Table(Statement, DBObject):
         table_name: str = None,
         reference_data: t.Dict = None,
         db_path: t.Optional[t.Union[str, Database]] = None,
+        temp: bool = False,
     ) -> "Table":
         return tablify(
             object,
@@ -937,6 +938,25 @@ class Table(Statement, DBObject):
             reference_data=reference_data,
             db_path=db_path,
             strict=True,
+            temp=temp,
+        )  # type: ignore
+
+    @staticmethod
+    def from_data(
+        data: t.Union[t.Dict, t.List[t.Dict]],
+        table_name: str = None,
+        db_path: t.Optional[t.Union[str, Database]] = None,
+        temp: bool = False,
+    ) -> "Table":
+        data = listify(data)
+        recipe_dict = {k: type(v) for k, v in data[0].items()}
+        return tablify(
+            recipe_dict,
+            table_name=table_name,
+            reference_data=data,
+            db_path=db_path,
+            strict=True,
+            temp=temp,
         )  # type: ignore
 
     @property
@@ -1343,8 +1363,8 @@ def tablify(
     table_name: str = None,
     reference_data: t.Optional[t.Dict] = None,
     db_path: Database = None,
+    temp: bool = False,
     strict: bool = False,
-    create: bool = False,
 ):
     if dataclasses.is_dataclass(object):
         return tablify(type(object))
@@ -1365,6 +1385,7 @@ def _(  # type: ignore
     table_name: str = None,
     reference_data: t.Optional[t.Dict] = None,
     db_path: str = None,
+    temp: bool = False,
     strict: bool = False,
 ) -> "Table":
     if db_path is not None:
@@ -1380,6 +1401,7 @@ def _(  # type: ignore
             for field in dataclasses.fields(object)
             if not field.metadata.get("exclude_column")
         ],
+        temp=temp,
     )
 
 
@@ -1389,6 +1411,7 @@ def _(  # type: ignore
     table_name: str = None,
     reference_data: t.Optional[t.Dict] = None,
     db_path: t.Optional[str] = None,
+    temp: bool = False,
     strict: bool = False,
 ) -> "Table":
     enum_type_handler(object)
@@ -1403,6 +1426,7 @@ def _(  # type: ignore
             {"id": member, "name": member.name, "value": member.value} for member in object  # type: ignore
         ],
         db_path=db_path,
+        temp=temp,
     )
 
 
@@ -1412,6 +1436,7 @@ def _(  # type: ignore
     table_name: str = None,
     reference_data: t.Optional[t.Dict] = None,
     db_path: t.Optional[str] = None,
+    temp: bool = False,
     strict: bool = False,
 ) -> Table:
     kwargs = {
@@ -1423,6 +1448,7 @@ def _(  # type: ignore
         else object.pop("reference_data", None),
         "db_path": db_path if db_path is not None else object.pop("db_path", None),
         "constraints": object.pop("constraints", None),
+        "temp": temp,
     }
     if "column" not in object and kwargs.get("reference_data") is not None:
         object = {
