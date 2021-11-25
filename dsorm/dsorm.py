@@ -84,7 +84,22 @@ class Database:
             except TypeError:
                 print(f"Connection failed for path: {self.db_path}")
                 raise
-        self.post_connect_hook()
+        self.post_connect_hook(**self.get_hook_args(self.post_connect_hook))
+
+    def get_hook_args(self, f: t.Callable) -> dict:
+        args = {}
+        parameters = inspect.signature(f).parameters
+        if "connection" in parameters:
+            args["connection"] = self._c
+        if "db" in parameters:
+            args["db"] = self
+        return args
+
+    def remove_hooks(self, hook_name=None) -> None:
+        if hook_name == "post_connect_hook" or hook_name is None:
+            setattr(self, "post_connect_hook", lambda x: x)
+        if hook_name == "pre_connect_hook" or hook_name is None:
+            setattr(self, "pre_connect_hook", lambda x: x)
 
     @property
     def c(self) -> t.Optional[sqlite3.Connection]:
@@ -1590,18 +1605,17 @@ def make_table(cls):
     return cls
 
 
-def hook_setter(run_once=True, attribute=""):  # pragma: no cover
-    def outer_wrapper(func):
-        @functools.wraps(func)
-        def f(*args):
-            func(args[0])
-            if run_once:
-                setattr(Database, attribute, lambda x: x)
+def hook_setter(original_function, *, attribute): # pragma: no cover
 
-        setattr(Database, attribute, f)
+    def _decorate(function):
+        @functools.wraps(function)
+        def wrapped_function(*args, **kwargs):
+            return function(*args, **kwargs)
 
-    return outer_wrapper
+        return wrapped_function
 
+    setattr(Database, attribute, original_function)
+    return _decorate(original_function)
 
 pre_connect = functools.partial(hook_setter, attribute="pre_connect_hook")
 post_connect = functools.partial(hook_setter, attribute="post_connect_hook")
