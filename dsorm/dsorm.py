@@ -137,6 +137,7 @@ class Database:
         command: t.Union[str, "SQLProvider", "Statement"],
         parameters: t.Union[t.Tuple, t.Dict] = None,
         commit: bool = True,
+        insert_returning: bool = False,
     ):
         """Execute a sql command with optional parameters"""
         with self.cursor() as cur:
@@ -174,9 +175,13 @@ class Database:
                     print(f"Syntax error in: {sql}\n\nError: {str(e)}")
                     print(f"Data: {command.data}")
                     raise
+            if insert_returning:
+                result = next(cur)
             if commit:
                 self.commit()
-            return cur.fetchall()
+            if not insert_returning:
+                result = cur.fetchall()
+            return result
 
     def table(self, name: str) -> "Table":
         table_name = name_parse(name)[1][-1]
@@ -264,7 +269,7 @@ class DateHandler(TypeHandler):
 
 
 class PickleHandler(TypeHandler):
-    sql_type: str = "BLOB"
+    sql_type: str = "PICKLED"
 
     @staticmethod
     def to_sql(value: datetime) -> str:
@@ -338,6 +343,7 @@ class TypeMaster:
     @classmethod
     def allow_pickle(cls):
         cls._allow_pickle = True
+        cls.register(PickleHandler)
 
     @classmethod
     def register(cls, handler: t.Type[TypeHandler]) -> None:
@@ -353,7 +359,7 @@ class TypeMaster:
         handler = cls.type_handlers.get(python_type, lambda x: x)
         if not cls._allow_pickle and handler == PickleHandler:
             raise RuntimeError(
-                f"Type {python_type} cannot be cast unless Pickling is enabled. Call TypeHandler.allow_pickle() to allow if you understand the security risk."
+                f"Type {python_type} cannot be cast unless Pickling is enabled. Call TypeMaster.allow_pickle() to allow if you understand the security risk."
             )
         return handler
 
@@ -391,7 +397,12 @@ class DBObject:
 
     def execute(self) -> t.Optional[t.List]:
         if isinstance(self, SQLProvider):
-            return self.db.execute(self)
+            returning = (
+                True
+                if (hasattr(self, "returning_column") and self.returning_column)
+                else False
+            )
+            return self.db.execute(self, insert_returning=returning)
 
 
 class SQLProvider(metaclass=ABCMeta):  # pragma: no cover
@@ -613,6 +624,7 @@ class Insert(DBObject, TableObjectBase):
     replace: bool = False
     column: t.List = dataclasses.field(default_factory=list)  # type: ignore
     _column: t.List = dataclasses.field(init=False, repr=False)
+    returning_column: t.List = dataclasses.field(default_factory=list)  # type: ignore
     data: t.List[t.Dict] = dataclasses.field(default_factory=dict)
     _data: t.List[t.Dict] = dataclasses.field(init=False, repr=False)
     _defaults_set: bool = False
@@ -683,12 +695,20 @@ class Insert(DBObject, TableObjectBase):
         if self.data:
             self["VALUES"] = f"VALUES ({':'+', :'.join(self.data[0].keys())})"
 
+    def returning_sql(self):
+        if self.returning_column:
+            self[
+                "RETURNING"
+            ] = f'RETURNING {f"{LINE}, ".join([str(c) for c in self.returning_column])}'
+
     class Order(Enum):
         INSERT = 1
         IDENTITY = 2
         COLUMN = 3
         SELECT = 4
         VALUES = 5
+        CONFLICT = 6
+        RETURNING = 7
 
 
 @dataclasses.dataclass
@@ -1035,11 +1055,13 @@ class Table(Statement, DBObject):
         data: t.Optional[t.Union[t.Dict, t.List, DataProvider]],
         column: t.List = None,
         replace: bool = False,
+        returning_column: list = None,
     ) -> Insert:
         return Insert(
             data=data,
             column=column if column else self.column,
             replace=replace,
+            returning_column=returning_column,
             table=self,
             db_path=self.db_path,
         )
@@ -1409,6 +1431,9 @@ def _(  # type: ignore
             return retrieved
     if not dataclasses.is_dataclass(object):
         raise ValueError(f"{type(object)} is not a supported type.")
+    constraints = getattr(object, "constraints", [])
+    if callable(constraints):
+        constraints = constraints()
     return Table(
         table_name=object.__name__,
         column=[
@@ -1416,6 +1441,7 @@ def _(  # type: ignore
             for field in dataclasses.fields(object)
             if not field.metadata.get("exclude_column")
         ],
+        constraints=constraints,
         temp=temp,
     )
 
@@ -1605,8 +1631,7 @@ def make_table(cls):
     return cls
 
 
-def hook_setter(original_function, *, attribute): # pragma: no cover
-
+def hook_setter(original_function, *, attribute):  # pragma: no cover
     def _decorate(function):
         @functools.wraps(function)
         def wrapped_function(*args, **kwargs):
@@ -1616,6 +1641,7 @@ def hook_setter(original_function, *, attribute): # pragma: no cover
 
     setattr(Database, attribute, original_function)
     return _decorate(original_function)
+
 
 pre_connect = functools.partial(hook_setter, attribute="pre_connect_hook")
 post_connect = functools.partial(hook_setter, attribute="post_connect_hook")

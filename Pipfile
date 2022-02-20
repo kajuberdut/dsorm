@@ -13,8 +13,5 @@ pytest-cov = "*"
 [packages]
 dsorm = {editable = true, path = "."}
 
-[requires]
-python_version = "3.9"
-
 [pipenv]
 allow_prereleases = true
