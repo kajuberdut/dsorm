@@ -669,7 +669,7 @@ class Insert(DBObject, TableObjectBase):
         "Adds default values for missing items where column.default_sig."
         result = dict()
         for c in self.column:
-            if (value := data.get(c.name)) is None:
+            if hasattr(c, "name") and (value := data.get(c.name)) is None:
                 if (sig := c.default_sig) is not None:
                     if sig.parameters.get("data"):
                         value = c.default(data=data)
@@ -818,8 +818,8 @@ class Column(Statement, DBObject):
         return cls(**{"column_name": column_name, **detail})
 
     @classmethod
-    def id(cls):
-        return cls.from_tuple(("id", ID_COLUMN))
+    def id(cls, column_name="id"):
+        return cls.from_tuple((column_name, ID_COLUMN))
 
     def __post_init__(self):
         if not self.column_name:
@@ -1019,7 +1019,7 @@ class Table(Statement, DBObject):
         ] = f"{',' if self.constraints else ''}{joinmap(self.constraints, ds_sql)}"
 
     def pkey(self) -> Column:
-        return [c for c in self.column if c.pkey][0]
+        return [c for c in self.column if hasattr(c, "pkey") and c.pkey][0]
 
     def fkey(self, on_column: t.Union["Column", "Qname", str, "RawSQL"]) -> ForeignKey:
         return ForeignKey(column=on_column, reference=self.pkey())
