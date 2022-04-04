@@ -6,9 +6,7 @@ verify_ssl = true
 [dev-packages]
 black = "*"
 flake8 = "*"
-pytest = "*"
 coverage = "*"
-pytest-cov = "*"
 
 [packages]
 dsorm = {editable = true, path = "."}
