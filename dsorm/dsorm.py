@@ -1631,16 +1631,11 @@ def make_table(cls):
     return cls
 
 
-def hook_setter(original_function, *, attribute):  # pragma: no cover
-    def _decorate(function):
-        @functools.wraps(function)
-        def wrapped_function(*args, **kwargs):
-            return function(*args, **kwargs)
-
-        return wrapped_function
-
-    setattr(Database, attribute, original_function)
-    return _decorate(original_function)
+def hook_setter(attribute):
+    def decorator(function):
+        setattr(Database, attribute, function)
+        return function
+    return decorator
 
 
 pre_connect = functools.partial(hook_setter, attribute="pre_connect_hook")

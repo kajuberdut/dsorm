@@ -22,9 +22,7 @@ from dsorm import Database, Pragma, pre_connect
 # The pre_connect wrapper let's you set a function that will be called before the first connection
 @pre_connect()
 def db_setup(db):
-    # This would be a good spot to check if you are running in a Dev/Prod/Test context
-    # Or you could have already loaded a config for your run context in which case
-    # you would simply pull in the database name here
+    # This function could be used to change behavior based on enviroment etc...
     db.default_db = ":memory:"
 
 
@@ -44,6 +42,10 @@ db = Database()
 db.connect()  # here we use this to trigger the hooks from above
 
 print(f"Default db is now {db.default_db}")
+# Default db is now :memory:
 
 print(db.execute("PRAGMA foreign_keys"))
+# [{'foreign_keys': 0}]
+
 print(db.execute("PRAGMA temp_store"))
+# [{'temp_store': 0}]
