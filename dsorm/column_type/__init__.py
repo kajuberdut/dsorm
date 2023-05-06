@@ -1,5 +1,4 @@
 from dsorm import CURRENT_DIALECT
-from dsorm.column_type.column_type import ColumnType
 from dsorm.column_type.mysql import type_dict as mysql_types
 from dsorm.column_type.postgres import type_dict as postgres_types
 from dsorm.column_type.sqlite import type_dict as sqlite_types

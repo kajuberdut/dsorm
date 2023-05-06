@@ -1,11 +1,13 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
-from dsorm import column_type
-from dsorm.base_types import BaseColumn
+from dsorm import column_type, fragments
+from dsorm.base_types import BaseColumn, BaseTable
 from dsorm.db_objects.constraint import Constraint
 
 
 class Column(BaseColumn):
+    parent: Optional[BaseTable]
+
     def __init__(
         self,
         column_name: str,
@@ -17,13 +19,6 @@ class Column(BaseColumn):
         self.python_type = python_type
         self.inline_constraints = inline_constraints
         self.constraints = constraints or []
-        self.table = None
-
-    def mount(self, table: "Table"):
-        if self.table is not None:
-            raise RuntimeError(f"Column previously mounted to {self.table}")
-        else:
-            self.table = table
 
     def sql(self):
         inline_constraints_sql = (
@@ -33,12 +28,16 @@ class Column(BaseColumn):
 
     @classmethod
     def primary_key(cls, column_name: str):
-        return cls(column_name, int, inline_constraints="NOT NULL PRIMARY KEY")
+        pkey_constraint = fragments["pkey_constraint"]
+        return cls(column_name, int, inline_constraints=pkey_constraint)
 
 
 class ColumnList:
     def __init__(self, *columns: Column):
         self.columns = columns
+
+    def mount(self, table: BaseTable):
+        [column.mount(table) for column in self.columns]
 
     def sql(self):
         columns_sql = ", ".join(column.sql() for column in self.columns)

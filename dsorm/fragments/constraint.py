@@ -4,7 +4,7 @@ from typing import Iterable
 from dsorm.base_types import BaseColumn
 from dsorm.dialect import SQLDialect
 
-PKEY_TYPE = defaultdict(
+pkey_constraint = defaultdict(
     "NOT NULL PRIMARY KEY",
     {
         SQLDialect.POSTGRESQL: "SERIAL PRIMARY KEY",

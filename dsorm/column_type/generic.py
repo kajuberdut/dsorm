@@ -1,7 +1,7 @@
 import datetime
 import decimal
 
-from dsorm.column_type.column_type import ColumnType
+from dsorm.base_types import ColumnType
 
 # Numeric types
 INTEGER = ColumnType(int, "INT")

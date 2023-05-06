@@ -1,8 +1,15 @@
-from dsorm.fragments.constraint import PKEY_TYPE, UNIQUE_DICT, FKEY_DICT
 from typing import ClassVar
-from dsorm import CURRENT_DIALECT
 
-DEFAULT_DATA = {"pkey_type": PKEY_TYPE, "unique": UNIQUE_DICT, "fkey": FKEY_DICT}
+from dsorm import CURRENT_DIALECT
+from dsorm.fragments.constraint import FKEY_DICT, UNIQUE_DICT, pkey_constraint
+from dsorm.fragments.table import CREATE_TABLE_DICT
+
+DEFAULT_DATA = {
+    "pkey_constraint": pkey_constraint,
+    "unique": UNIQUE_DICT,
+    "fkey": FKEY_DICT,
+    "create_table": CREATE_TABLE_DICT,
+}
 
 
 class Fragments:

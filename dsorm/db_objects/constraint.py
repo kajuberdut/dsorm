@@ -1,19 +1,22 @@
 from dsorm.fragments import Fragments
-from dsorm.base_types import BaseFKey, BaseUnique
-
+from dsorm.base_types import BaseFKey, BaseUnique, BaseColumn
+from typing import Optional, List
 
 class FKey(BaseFKey):
-    def __init__(self, column_name: str, references: str):
-        self.column_name = column_name
+
+    parent: BaseColumn
+
+    def __init__(self, references: BaseColumn, column: Optional[BaseColumn] = None):
         self.references = references
+        self.parent = column
 
     def sql(self):
-        return f"FOREIGN KEY ({self.column_name}) REFERENCES {self.references}"
+        return Fragments["fkey"](self.parent, self.references)
 
 
 class Unique(BaseUnique):
-    def __init__(self, column_name: str):
-        self.column_name = column_name
+    def __init__(self, column: Optional[BaseColumn | List[BaseColumn]] = None):
+        self.column = column
 
     def sql(self):
-        return f"UNIQUE ({self.column_name})"
+        return Fragments["unique"](self.column)
