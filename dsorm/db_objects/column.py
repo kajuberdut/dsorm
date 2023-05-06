@@ -1,10 +1,11 @@
 from typing import Any, List
 
 from dsorm import column_type
+from dsorm.base_types import BaseColumn
 from dsorm.db_objects.constraint import Constraint
 
 
-class Column:
+class Column(BaseColumn):
     def __init__(
         self,
         column_name: str,
@@ -16,6 +17,13 @@ class Column:
         self.python_type = python_type
         self.inline_constraints = inline_constraints
         self.constraints = constraints or []
+        self.table = None
+
+    def mount(self, table: "Table"):
+        if self.table is not None:
+            raise RuntimeError(f"Column previously mounted to {self.table}")
+        else:
+            self.table = table
 
     def sql(self):
         inline_constraints_sql = (

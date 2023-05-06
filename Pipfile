@@ -11,6 +11,8 @@ bump2version = "*"
 
 [packages]
 dsorm = {editable = true, path = "."}
+databases = "*"
+aiosqlite = "*"
 
 [pipenv]
 allow_prereleases = true

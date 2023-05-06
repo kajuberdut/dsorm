@@ -1,10 +1,8 @@
-
-class Constraint:
-    def sql(self):
-        raise NotImplementedError("Subclasses should implement this method")
+from dsorm.fragments import Fragments
+from dsorm.base_types import BaseFKey, BaseUnique
 
 
-class FKey(Constraint):
+class FKey(BaseFKey):
     def __init__(self, column_name: str, references: str):
         self.column_name = column_name
         self.references = references
@@ -13,7 +11,7 @@ class FKey(Constraint):
         return f"FOREIGN KEY ({self.column_name}) REFERENCES {self.references}"
 
 
-class Unique(Constraint):
+class Unique(BaseUnique):
     def __init__(self, column_name: str):
         self.column_name = column_name
 
