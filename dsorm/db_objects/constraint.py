@@ -1,9 +1,10 @@
-from dsorm.fragments import Fragments
-from dsorm.base_types import BaseFKey, BaseUnique, BaseColumn
-from typing import Optional, List
+from typing import List, Optional
+
+from dsorm.db_objects.base_types import BaseColumn, BaseFKey, BaseUnique
+from dsorm import fragments
+
 
 class FKey(BaseFKey):
-
     parent: BaseColumn
 
     def __init__(self, references: BaseColumn, column: Optional[BaseColumn] = None):
@@ -11,12 +12,14 @@ class FKey(BaseFKey):
         self.parent = column
 
     def sql(self):
-        return Fragments["fkey"](self.parent, self.references)
+        return fragments.fkey(self.parent, self.references)
 
 
 class Unique(BaseUnique):
+    parent: BaseColumn
+
     def __init__(self, column: Optional[BaseColumn | List[BaseColumn]] = None):
         self.column = column
 
     def sql(self):
-        return Fragments["unique"](self.column)
+        return fragments.unique(self.column)

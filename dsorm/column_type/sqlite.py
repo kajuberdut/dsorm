@@ -1,6 +1,7 @@
 import decimal
 
-from dsorm.base_types import ColumnType
+from dsorm.column_type.column_type import ColumnType
+
 from dsorm.column_type.generic import type_dict as generic_types
 
 # Numeric types

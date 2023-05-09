@@ -11,9 +11,8 @@ DIALECT_TYPES = {
 }
 
 
-class ColumnTypeGetter:
-    def __getitem__(self, python_type):
-        return DIALECT_TYPES[CURRENT_DIALECT][python_type]
+class _TypeKeeper:
+    def __getitem__(self, name):
+        return DIALECT_TYPES[CURRENT_DIALECT][name]
 
-
-__getitem__ = ColumnTypeGetter()
+TypeKeeper = _TypeKeeper()

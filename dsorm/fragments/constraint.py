@@ -1,11 +1,11 @@
 from collections import defaultdict
 from typing import Iterable
 
-from dsorm.base_types import BaseColumn
+from dsorm.db_objects.base_types import BaseColumn
 from dsorm.dialect import SQLDialect
 
 pkey_constraint = defaultdict(
-    "NOT NULL PRIMARY KEY",
+    lambda: "NOT NULL PRIMARY KEY",
     {
         SQLDialect.POSTGRESQL: "SERIAL PRIMARY KEY",
         SQLDialect.MYSQL: "INT AUTO_INCREMENT PRIMARY KEY",
@@ -21,7 +21,7 @@ def make_unique_fragment(col: BaseColumn | Iterable[BaseColumn]):
     return f"UNIQUE ({unique_cols})"
 
 
-UNIQUE_DICT = defaultdict(make_unique_fragment)
+UNIQUE_DICT = defaultdict(lambda: make_unique_fragment)
 
 
 def make_fkey(col: BaseColumn, ref_col: BaseColumn):
@@ -31,4 +31,4 @@ def make_fkey(col: BaseColumn, ref_col: BaseColumn):
     )
 
 
-FKEY_DICT = defaultdict(make_fkey)
+FKEY_DICT = defaultdict(lambda: make_fkey)

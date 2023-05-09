@@ -1,6 +1,6 @@
 import decimal
 
-from dsorm.base_types import ColumnType
+from dsorm.column_type.column_type import ColumnType
 from dsorm.column_type.generic import type_dict as generic_types
 
 # Numeric types
@@ -21,22 +21,15 @@ JSONB_DICT = ColumnType(
 
 
 type_dict = {
-    column_type.python_type: column_type
-    for column_type in [
-        INTEGER,
-        REAL,
-        NUMERIC,
-        TEXT,
-        VARCHAR,
-        DATE,
-        TIME,
-        TIMESTAMP,
-        BYTEA,
-        JSONB_LIST,
-        JSONB_DICT,
-    ]
-}
-type_dict = {
     **generic_types,
-    **{column_type.python_type: column_type for column_type in []},
+    **{
+        column_type.python_type: column_type
+        for column_type in [
+            REAL,
+            NUMERIC,
+            BYTEA,
+            JSONB_LIST,
+            JSONB_DICT,
+        ]
+    },
 }

@@ -107,3 +107,4 @@ config.json
 log.txt
 */times/*.json
 cov.xml
+.pdm-python
