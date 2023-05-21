@@ -15,6 +15,9 @@ class ColumnType:
             return f"{self._sql_type}({self.precision})"
         else:
             return self._sql_type
+        
+    def __str__(self):
+        return self.sql_type
 
     def __call__(self, precision: Optional[str] = None):
         return ColumnType(self.python_type, self._sql_type, precision)

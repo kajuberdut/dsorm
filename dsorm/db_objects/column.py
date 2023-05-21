@@ -24,16 +24,24 @@ class Column(BaseColumn):
         self.column_name = column_name
         self.python_type = python_type
         self.inline_constraints = inline_constraints
-        self.constraints = constraints or []
+        if constraints is None:
+            self.constraints = []
+        elif isinstance(constraints, list):
+            self.constraints = constraints
+        else:
+            self.constraints = [constraints]
 
-    def mount(self, parent:BaseTable):
+    def mount(self, parent: BaseTable):
         super().mount(parent=parent)
+        [constraint.mount(self) for constraint in self.constraints]
 
     def sql(self):
         inline_constraints_sql = (
             f" {self.inline_constraints}" if self.inline_constraints else ""
         )
-        return f"{self.column_name} {TypeKeeper[self.python_type]}{inline_constraints_sql}"
+        return (
+            f"{self.column_name} {TypeKeeper[self.python_type]}{inline_constraints_sql}"
+        )
 
     @classmethod
     def primary_key(cls, column_name: str):

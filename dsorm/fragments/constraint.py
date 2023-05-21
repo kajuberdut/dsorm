@@ -4,7 +4,7 @@ from typing import Iterable
 from dsorm.db_objects.base_types import BaseColumn
 from dsorm.dialect import SQLDialect
 
-pkey_constraint = defaultdict(
+PKEY_CONSTRAINT = defaultdict(
     lambda: "NOT NULL PRIMARY KEY",
     {
         SQLDialect.POSTGRESQL: "SERIAL PRIMARY KEY",
@@ -27,7 +27,7 @@ UNIQUE_DICT = defaultdict(lambda: make_unique_fragment)
 def make_fkey(col: BaseColumn, ref_col: BaseColumn):
     return (
         f"FOREIGN KEY ({col.column_name}) REFERENCES "
-        f"{ref_col.table.table_name}({ref_col.column_name})"
+        f"{ref_col.parent.table_name}({ref_col.column_name})"
     )
 
 

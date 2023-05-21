@@ -4,6 +4,7 @@ from dsorm.db_objects.column import Column, ColumnList
 from dsorm.db_objects.base_types import BaseTable
 from dsorm import fragments, CURRENT_SCHEMA
 
+
 class Table(BaseTable):
     def __init__(
         self,
@@ -32,32 +33,3 @@ class Table(BaseTable):
 
     def sql(self):
         return fragments.create_table(self)
-
-
-if __name__ == "__main__":
-
-    """
-    CREATE TABLE people (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL,
-        address_id INTEGER,
-        FOREIGN KEY (address_id) REFERENCES address(id)
-    );
-
-    CREATE INDEX idx_people_email ON people(email);
-    """
-
-    from dsorm.db_objects.constraint import FKey
-
-
-    id_column = Column.primary_key("id")
-    name_column = Column("name", str, "NOT NULL")
-    age_column = Column("age", int)
-
-    table = Table("users", id_column, name_column, age_column, schema="public")
-    print(table.sql())
-
-    user_id_column = Column("user_id", int, constraints=FKey(references=id_column))
-    table2 = Table("user_profiles", user_id_column, schema="public")
-    print(table2.sql())
