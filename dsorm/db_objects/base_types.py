@@ -1,8 +1,12 @@
 from typing import Any, List
 
 
-class SQLObject:
-    def sql(self):
+class SQLObject(str):
+    def __new__(cls, *args, length=10, **kwargs):
+        instance = super().__new__(cls)
+        return instance
+
+    def __str__(self):
         raise NotImplementedError("Subclasses should implement this method")
 
     def mount(self, parent: "SQLObject"):

@@ -2,7 +2,7 @@ import sqlite3
 import typing
 
 from dsorm.decorators.typing import DBClass
-from dsorm.decorators.utility import (
+from dsorm.utility import (
     add_property,
     basic_db_class,
     sqlite_execute,

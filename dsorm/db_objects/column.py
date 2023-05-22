@@ -1,14 +1,8 @@
-from enum import Enum
 from typing import Any, List, Optional
 
 from dsorm import fragments
 from dsorm.column_type import TypeKeeper
 from dsorm.db_objects.base_types import BaseColumn, BaseConstraint, BaseTable
-
-
-class ColumnUseCase(Enum):
-    CREATE_COLUMNS = 0
-    SELECT_COLUMNS = 1
 
 
 class Column(BaseColumn):
@@ -17,8 +11,8 @@ class Column(BaseColumn):
     def __init__(
         self,
         column_name: str,
-        python_type: Any,
-        inline_constraints: str = None,
+        python_type: Any = str,
+        inline_constraints: str = "NOT NULL",
         constraints: List[BaseConstraint] = None,
     ):
         self.column_name = column_name
@@ -31,38 +25,19 @@ class Column(BaseColumn):
         else:
             self.constraints = [constraints]
 
+    @classmethod
+    def primary_key(cls, column_name: str = "id"):
+        pkey_constraint = fragments.pkey_constraint
+        return cls(column_name, int, inline_constraints=pkey_constraint)
+
     def mount(self, parent: BaseTable):
         super().mount(parent=parent)
         [constraint.mount(self) for constraint in self.constraints]
 
-    def sql(self):
+    def __str__(self):
         inline_constraints_sql = (
             f" {self.inline_constraints}" if self.inline_constraints else ""
         )
         return (
             f"{self.column_name} {TypeKeeper[self.python_type]}{inline_constraints_sql}"
         )
-
-    @classmethod
-    def primary_key(cls, column_name: str):
-        pkey_constraint = fragments.pkey_constraint
-        return cls(column_name, int, inline_constraints=pkey_constraint)
-
-
-class ColumnList:
-    def __init__(self, *columns: Column):
-        self.columns = columns
-
-    def mount(self, table: BaseTable):
-        [column.mount(table) for column in self.columns]
-
-    def sql(self):
-        columns_sql = ", ".join(column.sql() for column in self.columns)
-
-        constraints = []
-        for column in self.columns:
-            constraints.extend(column.constraints)
-
-        constraints_sql = ", ".join(constraint.sql() for constraint in constraints)
-
-        return f"{columns_sql}{', ' if constraints_sql else ''}{constraints_sql}"

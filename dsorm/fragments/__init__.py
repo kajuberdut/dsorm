@@ -1,5 +1,3 @@
-from typing import ClassVar
-
 from dsorm import CURRENT_DIALECT
 from dsorm.fragments.constraint import FKEY_DICT, UNIQUE_DICT, PKEY_CONSTRAINT
 from dsorm.fragments.index import DROP_INDEX_DICT, INDEX_DICT

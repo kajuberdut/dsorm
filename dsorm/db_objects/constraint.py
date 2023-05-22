@@ -11,7 +11,7 @@ class FKey(BaseFKey):
         self.references = references
         self.parent = column
 
-    def sql(self):
+    def __str__(self):
         return fragments.fkey(self.parent, self.references)
 
 
@@ -21,5 +21,5 @@ class Unique(BaseUnique):
     def __init__(self, column: Optional[BaseColumn | List[BaseColumn]] = None):
         self.column = column
 
-    def sql(self):
+    def __str__(self):
         return fragments.unique(self.column)

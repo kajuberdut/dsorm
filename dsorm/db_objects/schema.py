@@ -9,3 +9,6 @@ class Schema(BaseSchema):
     def use(self):
         global CURRENT_SCHEMA
         CURRENT_SCHEMA = self.schema_name
+
+    def __str__(self):
+        return self.schema_name

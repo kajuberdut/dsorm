@@ -1,20 +1,17 @@
+from typing import Optional
+
 from dsorm.decorators.dbclass import dbclass
 from dsorm.decorators.dblite import dblite
 from dsorm.decorators.typing import DBClass
-from dsorm.dialect import SQLDialect
+from dsorm.dialect import SQLDialectType, get_sqldialect
+from dsorm.utility import sqlite_execute, sqlite_fetch_all
+
+CURRENT_DIALECT: SQLDialectType = get_sqldialect("sqlite")
+DEFAULT_DATABASE = None
+CURRENT_SCHEMA: Optional[str] = None
 
 
-CURRENT_DIALECT = SQLDialect.SQLITE
-CURRENT_SCHEMA = None
+def setup(default_db, dialect: SQLDialectType):
+    global CURRENT_DIALECT
 
-
-class Dialect:
-    def __getitem__(self, key):
-        global CURRENT_DIALECT
-        try:
-            CURRENT_DIALECT = SQLDialect[key]
-        except KeyError:
-            CURRENT_DIALECT = SQLDialect(key)
-
-
-__getitem__ = Dialect()
+    CURRENT_DIALECT = get_sqldialect(dialect)

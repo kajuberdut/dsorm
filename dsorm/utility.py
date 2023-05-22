@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import sqlite3
 import typing
@@ -5,6 +6,13 @@ import typing
 if typing.TYPE_CHECKING:
     from databases import Database
 
+
+def resolve(func, *args, **kwargs):
+    result = func(*args, **kwargs)
+    if inspect.iscoroutine(result):
+        return asyncio.run(result)
+    else:
+        return result
 
 def basic_db_class(
     dbclass, db: typing.Union[sqlite3.Connection, "Database"], table_name: str | None
@@ -48,7 +56,7 @@ def sqlite_fetch_all(
     parameters = tuple() if parameters is None else parameters
     cursor = db.cursor()
     cursor.row_factory = sqlite3.Row
-    cursor.execute(query, parameters)
+    cursor.execute(str(query), parameters)
 
     return cursor.fetchall()
 
@@ -58,4 +66,4 @@ def sqlite_execute(
 ) -> sqlite3.Cursor:
     with db:
         parameters = tuple() if parameters is None else parameters
-        return db.execute(command, parameters)
+        return db.execute(str(command), parameters)

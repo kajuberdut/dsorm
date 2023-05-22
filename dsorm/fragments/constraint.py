@@ -5,7 +5,7 @@ from dsorm.db_objects.base_types import BaseColumn
 from dsorm.dialect import SQLDialect
 
 PKEY_CONSTRAINT = defaultdict(
-    lambda: "NOT NULL PRIMARY KEY",
+    lambda: "PRIMARY KEY",
     {
         SQLDialect.POSTGRESQL: "SERIAL PRIMARY KEY",
         SQLDialect.MYSQL: "INT AUTO_INCREMENT PRIMARY KEY",

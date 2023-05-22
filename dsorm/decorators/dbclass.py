@@ -3,7 +3,7 @@ import typing
 
 from databases import Database
 from dsorm.decorators.typing import DBClass
-from dsorm.decorators.utility import add_property, basic_db_class
+from dsorm.utility import add_property, basic_db_class
 
 
 # dbclass methods

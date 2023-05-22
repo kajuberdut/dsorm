@@ -1,21 +1,27 @@
 import sqlite3
 
-from dsorm import DBClass, dblite
+import dsorm
+from dsorm.db_objects import Column, Table
+
+# set dialect
+dsorm.set_dialect("SQLITE")
 
 # +-------------------------------------------------+
 # |                PRE EXAMPLE SETUP                |
 # +-------------------------------------------------+
 
+user_table = Table(
+    "user",
+    Column.primary_key(),
+    Column("first_name"),
+    Column("last_name"),
+    Column("email", inline_constraints=" UNIQUE NOT NULL"),
+)
+
 
 # Table must exist before the @sqlite_dbclass is created.
 db = sqlite3.connect(":memory:")
-db.execute(
-    """CREATE TABLE user (id INTEGER PRIMARY KEY NOT NULL,
-                          first_name TEXT NOT NULL,
-                          last_name TEXT NOT NULL,
-                          email TEXT UNIQUE NOT NULL)"""
-)
-
+dsorm.sqlite_execute(db, user_table)
 
 # +-------------------------------------------------+
 # |                EXAMPLE STARTS HERE              |
@@ -23,7 +29,7 @@ db.execute(
 
 
 # The db class decorator takes at minimum an instance of databases.Database
-@dblite(db=db)
+@dsorm.dblite(db=db)
 class User:
     pass
 
@@ -37,7 +43,7 @@ new_user = User(
     }
 ).save()
 
-print(f"new_user isinstant of DBClass: {isinstance(new_user, DBClass)}")
+print(f"new_user isinstant of DBClass: {isinstance(new_user, dsorm.DBClass)}")
 
 # load the same user from the db
 loaded_user = User.load(new_user.id)
