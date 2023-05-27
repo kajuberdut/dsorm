@@ -25,7 +25,5 @@ def get_sqldialect(value: SQLDialectType) -> SQLDialect:
 
 
 def db_url_to_dialect(DATABASE_URL):
-    result = urlparse(DATABASE_URL)
-    scheme = result.scheme.upper()
-
-    return get_sqldialect(scheme)
+    dialect = urlparse(DATABASE_URL).scheme.upper()
+    return get_sqldialect(dialect)

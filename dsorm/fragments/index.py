@@ -1,26 +1,29 @@
 from collections import defaultdict
+from typing import Optional
 
-from dsorm.db_objects.base_types import BaseColumn
+from dsorm.db_objects.base_types import BaseIndex
 
 
-def make_index(*idx_col: BaseColumn, schema="", if_not_exists=True, where="", **kwargs):
-    index_name = f"{idx_col.table.name}_{idx_col.column_name}_idx"
+def make_index(index: BaseIndex):
+    column_name, table_name = index.column.name, index.column.parent.name
+    schema = index.schema
     return (
-        f"CREATE INDEX {'IF NOT EXISTS' if if_not_exists else ''}"
-        " "
-        f"{schema}{'.' if schema else ''}{index_name} ON {idx_col.table.name}({idx_col.column_name})"
-        f"{' ' if where else ''}{where}"
+        f"CREATE {'UNIQUE ' if index.unique else ''}"
+        f" INDEX {'IF NOT EXISTS ' if index.if_not_exists else ''}"
+        f"{schema + '.' if schema else ''}"
+        f"{'.' if index.schema else ''}{index.name} ON {table_name}({column_name})"
+        f"{' ' if index.where else ''}"
     )
 
 
 INDEX_DICT = defaultdict(lambda: make_index)
 
 
-def make_drop_index(idx_name, schema="", if_exists=True, **kwargs):
+def make_drop_index(index: BaseIndex):
     return (
-        f"DROP INDEX {'IF EXISTS'  if if_exists else ''}"
+        f"DROP INDEX {'IF EXISTS'  if index.if_exists else ''}"
         " "
-        f"{schema}{'.' if schema else ''}{idx_name}"
+        f"{index.schema}{'.' if index.schema else ''}{index.name}"
     )
 
 

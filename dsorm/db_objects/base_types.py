@@ -1,9 +1,12 @@
 from typing import Any, List, Optional
 
+
 class _NonChild:
     pass
 
+
 NonChild = _NonChild()
+
 
 class SQLObject(str):
     def __new__(cls, *args, length=10, **kwargs):
@@ -41,8 +44,8 @@ class BaseColumn(SQLObject):
 
 class BaseTable(SQLObject):
     name: str
-    scheme: Optional[str]
     children: list[BaseColumn]
+    schema: Optional[str]
     if_not_exists: bool
 
 
@@ -63,8 +66,12 @@ class BaseUnique(BaseConstraint):
 
 
 class BaseIndex(SQLObject):
-    index_name: str
-    column: List["BaseColumn"]
+    column: BaseColumn
+    name: str
+    schema: Optional[str]
+    unique: bool
+    where: Optional[str]
+    if_not_exists: bool
 
 
 inheritence_dict = {

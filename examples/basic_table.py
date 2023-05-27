@@ -1,33 +1,28 @@
-from dsorm.db_objects import Column, FKey, Table
-import dsorm
+from dsorm.db_objects import Column, FKey, Table, Index
 
-dsorm.default_schema = "public"
-
-
-addresses_table = Table(
-    "addresses",
+address_table = Table(
+    "address",
     Column.primary_key(),
-    # This classmethod is equivilent to
-    #   Column( column_name="id"
-    #         , python_type=int
-    #         , inline_constraints=dialect specific primary key decleration
-    #         )
     Column("street"),
     Column("city"),
     Column("state"),
     Column("postal_code"),
 )
 
+idx_address_postal_code = Index(address_table["postal_code"])
+print()
+"""CREATE  INDEX IF NOT EXISTS idx_address_postal_code ON address(postal_code)"""
 
 user_table = Table(
-    "users",
+    "user",
     Column.primary_key(),
     Column("name"),
-    Column("address_id", constraints=FKey(references=addresses_table["id"])),
+    Column("address_id", constraints=FKey(references=address_table["id"])),
 )
-print(addresses_table)
 
-"""CREATE TABLE addresses (
+
+print(address_table, idx_address_postal_code)
+"""CREATE TABLE IF NOT EXISTS addresses (
     id INT PRIMARY KEY,
     street TEXT NOT NULL,
     city TEXT NOT NULL,
@@ -35,9 +30,9 @@ print(addresses_table)
     postal_code TEXT NOT NULL
 );
 """
-print(user_table)
 
-"""CREATE TABLE users (
+print(user_table)
+"""CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY,
     name TEXT NOT NULL,
     address_id TEXT NOT NULL,
