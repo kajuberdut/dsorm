@@ -1,5 +1,9 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
+class _NonChild:
+    pass
+
+NonChild = _NonChild()
 
 class SQLObject(str):
     def __new__(cls, *args, length=10, **kwargs):
@@ -14,6 +18,15 @@ class SQLObject(str):
             raise RuntimeError(f"Object {self} already has parent {self.parent}")
         self.parent = parent
 
+    def __getitem__(self, key):
+        if getattr(self, "children", NonChild) is NonChild:
+            raise ValueError(f"{self.__class__} is not subscriptable.")
+        else:
+            for child in self.children:
+                if child.name == key:
+                    return child
+            raise KeyError(f'"{key}" not found in {self}.')
+
 
 class BaseSchema(SQLObject):
     schema_name: str
@@ -27,7 +40,10 @@ class BaseColumn(SQLObject):
 
 
 class BaseTable(SQLObject):
-    pass
+    name: str
+    scheme: Optional[str]
+    children: list[BaseColumn]
+    if_not_exists: bool
 
 
 class BaseConstraint(SQLObject):

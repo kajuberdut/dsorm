@@ -15,7 +15,7 @@ class Column(BaseColumn):
         inline_constraints: str = "NOT NULL",
         constraints: List[BaseConstraint] = None,
     ):
-        self.column_name = column_name
+        self.name = column_name
         self.python_type = python_type
         self.inline_constraints = inline_constraints
         if constraints is None:
@@ -39,5 +39,5 @@ class Column(BaseColumn):
             f" {self.inline_constraints}" if self.inline_constraints else ""
         )
         return (
-            f"{self.column_name} {TypeKeeper[self.python_type]}{inline_constraints_sql}"
+            f"{self.name} {TypeKeeper[self.python_type]}{inline_constraints_sql}"
         )

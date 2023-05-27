@@ -26,8 +26,8 @@ UNIQUE_DICT = defaultdict(lambda: make_unique_fragment)
 
 def make_fkey(col: BaseColumn, ref_col: BaseColumn):
     return (
-        f"FOREIGN KEY ({col.column_name}) REFERENCES "
-        f"{ref_col.parent.table_name}({ref_col.column_name})"
+        f"FOREIGN KEY ({col.name}) REFERENCES "
+        f"{ref_col.parent.name}({ref_col.name})"
     )
 
 

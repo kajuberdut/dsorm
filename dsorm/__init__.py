@@ -19,4 +19,4 @@ def setup(db_url: str, tables: Optional[list] = None):
     db = Database(db_url)
 
     for table in tables:
-        resolve(db.execute())
+        resolve(db.execute(str(table)))

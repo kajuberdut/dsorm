@@ -15,7 +15,10 @@ def child_list(table):
 
 
 def create_table(table: BaseTable):
-    return f"CREATE TABLE {table.full_table_name} " f" ({child_list(table)})"
+    return (
+        f"CREATE TABLE {'IF NOT EXISTS ' if table.if_not_exists else ''}"
+        f"{table.full_name} ({child_list(table)})"
+    )
 
 
 CREATE_TABLE_DICT = defaultdict(lambda: create_table)
