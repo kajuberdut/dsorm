@@ -1,16 +1,18 @@
-from dsorm.db_objects.base_types import BaseTable
-from dsorm import fragments, CURRENT_SCHEMA
+from typing import Type
+
+from dsorm import default_schema, fragments
+from dsorm.db_objects.base_types import BaseColumn, BaseTable
 
 
 class Table(BaseTable):
     def __init__(
         self,
         table_name,
-        *children,
+        *children: Type[BaseColumn],
         schema=None,
     ):
         self.table_name = table_name
-        self.schema = schema or CURRENT_SCHEMA
+        self.schema = schema or default_schema
         self.children = children
         [column.mount(self) for column in self.children]
 
@@ -20,3 +22,9 @@ class Table(BaseTable):
 
     def __str__(self):
         return fragments.create_table(self)
+
+    def __getitem__(self, key):
+        for column in self.children:
+            if column.column_name == key:
+                return column
+        raise KeyError(f'Column "{key}" not found in the table.')

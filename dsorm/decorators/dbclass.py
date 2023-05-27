@@ -3,7 +3,7 @@ import typing
 
 from databases import Database
 from dsorm.decorators.typing import DBClass
-from dsorm.utility import add_property, basic_db_class
+from dsorm.utility import add_property, scaffold_db_class
 
 
 # dbclass methods
@@ -83,7 +83,7 @@ def dbclass(db: Database, table_name: str | None = None):
     def class_decorator(dbclass):
         nonlocal table_name
 
-        basic_db_class(dbclass, db, table_name)
+        scaffold_db_class(dbclass, db, table_name)
 
         results = asyncio.run(db.fetch_all(f"PRAGMA table_info({dbclass._table_name})"))
 

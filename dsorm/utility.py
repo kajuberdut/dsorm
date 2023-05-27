@@ -8,13 +8,17 @@ if typing.TYPE_CHECKING:
 
 
 def resolve(func, *args, **kwargs):
+    if asyncio.get_event_loop() is not None:
+        raise RuntimeError("An event loop is already present.")
+
     result = func(*args, **kwargs)
     if inspect.iscoroutine(result):
         return asyncio.run(result)
     else:
         return result
 
-def basic_db_class(
+
+def scaffold_db_class(
     dbclass, db: typing.Union[sqlite3.Connection, "Database"], table_name: str | None
 ):
     dbclass._is_db_class = True
@@ -48,22 +52,3 @@ def add_property(cls, col_name: str):
         getattr(self, "_data")[col_name] = value
 
     setattr(cls, col_name, property(getter, setter))
-
-
-def sqlite_fetch_all(
-    db: sqlite3.Connection, query: str, parameters: dict | tuple | None = None
-) -> list:
-    parameters = tuple() if parameters is None else parameters
-    cursor = db.cursor()
-    cursor.row_factory = sqlite3.Row
-    cursor.execute(str(query), parameters)
-
-    return cursor.fetchall()
-
-
-def sqlite_execute(
-    db: sqlite3.Connection, command: str, parameters: dict | tuple | None = None
-) -> sqlite3.Cursor:
-    with db:
-        parameters = tuple() if parameters is None else parameters
-        return db.execute(str(command), parameters)

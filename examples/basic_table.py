@@ -1,24 +1,45 @@
-from dsorm.db_objects import Table, Column, FKey
+from dsorm.db_objects import Column, FKey, Table
+import dsorm
 
-"""
-CREATE TABLE people (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    address_id INTEGER,
-    FOREIGN KEY (address_id) REFERENCES address(id)
+dsorm.default_schema = "public"
+
+
+addresses_table = Table(
+    "addresses",
+    Column.primary_key(),
+    # This classmethod is equivilent to
+    #   Column( column_name="id"
+    #         , python_type=int
+    #         , inline_constraints=dialect specific primary key decleration
+    #         )
+    Column("street"),
+    Column("city"),
+    Column("state"),
+    Column("postal_code"),
+)
+
+
+user_table = Table(
+    "users",
+    Column.primary_key(),
+    Column("name"),
+    Column("address_id", constraints=FKey(references=addresses_table["id"])),
+)
+print(addresses_table)
+
+"""CREATE TABLE addresses (
+    id INT PRIMARY KEY,
+    street TEXT NOT NULL,
+    city TEXT NOT NULL,
+    state TEXT NOT NULL,
+    postal_code TEXT NOT NULL
 );
-
-CREATE INDEX idx_people_email ON people(email);
 """
+print(user_table)
 
-id_column = Column.primary_key("id")
-name_column = Column("name", str, "NOT NULL")
-age_column = Column("age", int)
-
-table = Table("users", id_column, name_column, age_column, schema="public")
-print(table)
-
-user_id_column = Column("user_id", int, constraints=FKey(references=id_column))
-table2 = Table("user_profiles", user_id_column, schema="public")
-print(table2)
+"""CREATE TABLE users (
+    id INT PRIMARY KEY,
+    name TEXT NOT NULL,
+    address_id TEXT NOT NULL,
+    FOREIGN KEY (address_id) REFERENCES addresses(id)
+);"""
