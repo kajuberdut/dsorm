@@ -1,11 +1,9 @@
 import asyncio
 import tempfile
-from pathlib import Path
 
 import databases
-from dsorm import dbclass
 
-import sqlite3
+from dsorm import dbclass
 
 # +-------------------------------------------------+
 # |                PRE EXAMPLE SETUP                |
@@ -21,7 +19,7 @@ try:
 
 
     # +-------------------------------------------------+
-    # |                EXAMPLE STARTS HERE               |
+    # |                EXAMPLE STARTS HERE              |
     # +-------------------------------------------------+
 
 
@@ -55,6 +53,5 @@ try:
 
     asyncio.run(database.disconnect())
 
-    for file in temp_path.glob("*"):
-        file.unlink()
-    temp_path.rmdir()
+finally:
+    temp_file.close()

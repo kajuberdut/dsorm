@@ -10,8 +10,7 @@ address_table = Table(
 )
 
 idx_address_postal_code = Index(address_table["postal_code"])
-print()
-"""CREATE  INDEX IF NOT EXISTS idx_address_postal_code ON address(postal_code)"""
+
 
 user_table = Table(
     "user",
@@ -30,6 +29,9 @@ print(address_table, idx_address_postal_code)
     postal_code TEXT NOT NULL
 );
 """
+
+print(idx_address_postal_code)
+"""CREATE  INDEX IF NOT EXISTS idx_address_postal_code ON address(postal_code)"""
 
 print(user_table)
 """CREATE TABLE IF NOT EXISTS users (

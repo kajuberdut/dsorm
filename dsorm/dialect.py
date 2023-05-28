@@ -1,6 +1,5 @@
 from enum import Enum
 from typing import TypeAlias
-from urllib.parse import urlparse
 
 
 class SQLDialect(Enum):
@@ -22,8 +21,3 @@ def get_sqldialect(value: SQLDialectType) -> SQLDialect:
         return value
     else:
         raise TypeError("Invalid type for SQLDialect")
-
-
-def db_url_to_dialect(DATABASE_URL):
-    dialect = urlparse(DATABASE_URL).scheme.upper()
-    return get_sqldialect(dialect)
